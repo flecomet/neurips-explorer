@@ -53,7 +53,11 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 2. Settings, Pages, Source: **GitHub Actions**.
 3. Actions tab, **Refresh data**, Run workflow. It runs the whole pipeline on a GitHub runner
    (embedding on CPU takes tens of minutes), commits `data/`, and starts the Pages deployment.
-4. If `scrape.py` reports 0 papers for a track, look up the venue id on
+4. If `scrape.py` fails with HTTP 403, the log shows the server's reply, and the **Probe OpenReview**
+   step before it shows whether the 2025 venue is also refused (blocked client or network) or only
+   2026. As a fallback, add repository secrets `OPENREVIEW_USERNAME` and `OPENREVIEW_PASSWORD`
+   (an OpenReview account); the scraper then logs in before querying.
+5. If `scrape.py` reports 0 papers for a track, look up the venue id on
    `https://openreview.net/group?id=NeurIPS.cc/2026`, fix `VENUES` in `config.py`, and rerun.
 
 ## Run locally

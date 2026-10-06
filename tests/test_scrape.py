@@ -48,12 +48,14 @@ def test_parse_decision(venue, expected):
 class FakeSession:
     """Serves `notes` page by page and records the offsets requested."""
 
-    def __init__(self, notes, fail_first=0):
-        self.notes, self.offsets, self.fail_first = notes, [], fail_first
+    def __init__(self, notes, fail_first=0, status=0):
+        self.notes, self.offsets, self.fail_first, self.status = notes, [], fail_first, status
 
     def get(self, url, params, timeout):
         class Resp:
-            headers = {"Retry-After": "0"}
+            headers = {"Retry-After": "0", "server": "test"}
+            url = "https://example.invalid/notes"
+            text = "forbidden body"
 
             def __init__(self, status, body):
                 self.status_code, self._body = status, body
@@ -64,6 +66,8 @@ class FakeSession:
             def json(self):
                 return self._body
 
+        if self.status:
+            return Resp(self.status, {})
         if self.fail_first:
             self.fail_first -= 1
             return Resp(429, {})
@@ -83,3 +87,9 @@ def test_fetch_venue_paginates(notes, monkeypatch):
 def test_fetch_venue_retries_on_rate_limit(notes):
     session = FakeSession(notes, fail_first=2)
     assert len(scrape.fetch_venue(session, "X", "t")) == 2
+
+
+def test_client_error_reports_status_and_body():
+    with pytest.raises(scrape.ApiError) as err:
+        scrape.fetch_venue(FakeSession([], status=403), "X", "t")
+    assert "HTTP 403" in str(err.value) and "forbidden body" in str(err.value)

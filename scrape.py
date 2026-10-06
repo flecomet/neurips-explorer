@@ -20,6 +20,7 @@ import config
 PAGE_SIZE = 1000
 MAX_RETRIES = 5
 DECISIONS = ("oral", "spotlight", "poster")
+USER_AGENT = "neurips-explorer (+https://github.com/flecomet/neurips-explorer)"
 
 
 def value(content, key, default=""):
@@ -58,10 +59,36 @@ def parse_note(note, track):
     }
 
 
+class ApiError(RuntimeError):
+    pass
+
+
+def login(session, username, password):
+    """Optional: send an OpenReview bearer token with every request."""
+    resp = session.post(
+        f"{config.OPENREVIEW_API}/login",
+        json={"id": username, "password": password},
+        timeout=60,
+    )
+    if resp.status_code != 200:
+        raise ApiError(f"OpenReview login failed: HTTP {resp.status_code} {resp.text[:300]}")
+    session.headers["Authorization"] = f"Bearer {resp.json()['token']}"
+    print("Logged in to OpenReview.")
+
+
 def get_json(session, url, params):
     delay = 2.0
     for attempt in range(1, MAX_RETRIES + 1):
         resp = session.get(url, params=params, timeout=60)
+        if resp.status_code >= 400 and resp.status_code != 429 and resp.status_code < 500:
+            # Show what the server said: a 403 can mean an unreadable venue, a blocked
+            # client or a blocked network, and the body tells them apart.
+            keep = ("server", "cf-ray", "www-authenticate", "content-type")
+            hdrs = {k: v for k, v in resp.headers.items() if k.lower() in keep}
+            raise ApiError(
+                f"HTTP {resp.status_code} for {resp.url}\n"
+                f"headers: {hdrs}\nbody: {resp.text[:600]!r}"
+            )
         if resp.status_code == 429 or resp.status_code >= 500:
             wait = float(resp.headers.get("Retry-After", delay))
             print(f"  HTTP {resp.status_code}, retrying in {wait:.0f}s ({attempt}/{MAX_RETRIES})")
@@ -99,6 +126,10 @@ def main():
     venues = dict(v.split("=", 1) for v in args.venue) if args.venue else config.VENUES
 
     session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    user, password = os.environ.get("OPENREVIEW_USERNAME"), os.environ.get("OPENREVIEW_PASSWORD")
+    if user and password:
+        login(session, user, password)
     papers = {}
     for track, venueid in venues.items():
         print(f"Fetching {track} ({venueid})")
