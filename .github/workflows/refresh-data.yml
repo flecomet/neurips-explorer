@@ -1,16 +1,20 @@
 name: Refresh data
 
 # Runs the whole pipeline on a GitHub runner (no local GPU or network access needed):
-# scrape OpenReview -> SPECTER2 embeddings (CPU) -> UMAP/HDBSCAN layout -> commit -> redeploy.
+# scrape neurips.cc (or OpenReview) -> SPECTER2 embeddings (CPU) -> UMAP/HDBSCAN layout -> commit -> redeploy.
 # Run it from the Actions tab once accepted papers are public, and again when
 # camera-ready abstracts change.
 on:
   workflow_dispatch:
     inputs:
-      scrape:
-        description: "Scrape OpenReview first. Untick if data/neurips_2026_papers.json was committed from your own machine."
-        type: boolean
-        default: true
+      source:
+        description: "Where the paper list comes from"
+        type: choice
+        default: neurips.cc
+        options:
+          - neurips.cc
+          - openreview
+          - committed   # use data/neurips_2026_papers.json as it is in the repository
 
 permissions:
   contents: write   # commit the regenerated data files
@@ -35,22 +39,18 @@ jobs:
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements-pipeline.txt
-      # Tells a blocked client/network (2025 also fails) from a 2026-specific problem.
-      - name: Probe OpenReview
-        if: ${{ inputs.scrape }}
+      # Prints what neurips.cc returns (card count, where the abstract sits), whatever happens next.
+      - name: Probe neurips.cc
+        if: ${{ inputs.source == 'neurips.cc' }}
         continue-on-error: true
-        run: |
-          for q in "notes?content.venueid=NeurIPS.cc/2025/Conference&limit=1" \
-                   "notes?content.venueid=NeurIPS.cc/2026/Conference&limit=1" \
-                   "groups?id=NeurIPS.cc/2026/Conference"; do
-            echo "=== $q"
-            curl -sS -m 30 -i -A "neurips-explorer" "https://api2.openreview.net/$q" | head -c 1500
-            echo
-          done
+        run: python scrape_site.py --probe
+      - name: Scrape neurips.cc
+        if: ${{ inputs.source == 'neurips.cc' }}
+        run: python scrape_site.py
+      # OpenReview has not released the 2026 papers, and it blocks scripts on GitHub runners.
       - name: Scrape OpenReview
-        if: ${{ inputs.scrape }}
+        if: ${{ inputs.source == 'openreview' }}
         env:
-          # Optional repository secrets; only needed if anonymous access is refused.
           OPENREVIEW_USERNAME: ${{ secrets.OPENREVIEW_USERNAME }}
           OPENREVIEW_PASSWORD: ${{ secrets.OPENREVIEW_PASSWORD }}
         run: python scrape.py

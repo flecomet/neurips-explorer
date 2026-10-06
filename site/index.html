@@ -103,6 +103,7 @@
     <option value="topic">Topic</option>
     <option value="decision">Presentation</option>
     <option value="area">Primary area</option>
+    <option value="site">Location</option>
   </select>
   <button id="btn-topics" title="Browse topics">Topics</button>
   <button id="btn-saved" title="Saved papers">★ Saved <span id="saved-n">0</span></button>
@@ -117,7 +118,7 @@
 </main>
 <footer>
   Derived from <a href="https://github.com/dataplayer12/cvpr-explorer" target="_blank" rel="noopener">dataplayer12/cvpr-explorer</a>.
-  Paper metadata from <a href="https://openreview.net" target="_blank" rel="noopener">OpenReview</a>.
+  Paper metadata from <a href="https://neurips.cc/virtual/2026/papers.html" target="_blank" rel="noopener">neurips.cc</a>.
   Nearby points are semantically similar papers.
 </footer>
 
@@ -196,6 +197,10 @@ function computeStyle(mode) {
     colors = D.dec.map(d => DECISION_STYLE[D.decisions[d]].color);
     sizes = D.dec.map(d => DECISION_STYLE[D.decisions[d]].size);
     D.decisions.forEach(d => legend.push([DECISION_STYLE[d].color, d]));
+  } else if (mode === "site") {
+    colors = D.site.map(s => hue(s));
+    sizes = new Array(n).fill(5);
+    D.sites.forEach((s, i) => legend.push([hue(i), s || "(none)"]));
   } else if (mode === "area") {
     colors = D.area.map(a => hue(a));
     sizes = new Array(n).fill(5);
@@ -415,12 +420,13 @@ function renderPaper() {
   const badges = el("div", { className: "badges" },
     el("span", { className: "badge" }, D.decisions[D.dec[i]]),
     D.tracks.length > 1 ? el("span", { className: "badge" }, D.tracks[D.track[i]]) : null,
+    D.sites[D.site[i]] ? el("span", { className: "badge" }, D.sites[D.site[i]]) : null,
     D.areas[D.area[i]] ? el("span", { className: "badge" }, prettyArea(D.areas[D.area[i]])) : null);
 
   const actions = el("div", { className: "actions" });
   if (X) {
     if (X.pdf[i]) actions.append(el("a", { className: "primary", href: X.pdf[i], target: "_blank", rel: "noopener", textContent: "PDF" }));
-    actions.append(el("a", { href: X.forum[i], target: "_blank", rel: "noopener", textContent: "OpenReview" }));
+    actions.append(el("a", { href: X.forum[i], target: "_blank", rel: "noopener", textContent: /openreview\.net/.test(X.forum[i]) ? "OpenReview" : "Paper page" }));
   }
   const star = el("button", { textContent: isSaved ? "★ Saved" : "☆ Save" });
   star.addEventListener("click", () => toggleSaved(i));
@@ -495,7 +501,7 @@ function showSaved() {
 
 function downloadCsv(idx) {
   const q = s => '"' + String(s).replace(/"/g, '""') + '"';
-  const rows = [["title", "authors", "pdf", "openreview"].join(",")]
+  const rows = [["title", "authors", "pdf", "link"].join(",")]
     .concat(idx.map(i => [D.title[i], X.authors[i], X.pdf[i], X.forum[i]].map(q).join(",")));
   const a = el("a", { href: URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" })), download: "neurips2026-saved.csv" });
   a.click();
@@ -544,10 +550,11 @@ fetch("data.json").then(r => r.json()).then(async data => {
   D = data;
   const params = new URLSearchParams(location.search);
   const mode = params.get("color");
-  if (["decision", "area"].includes(mode)) $("colorby").value = mode;
+  if (["decision", "area", "site"].includes(mode)) $("colorby").value = mode;
   // Hide the "color by" options that carry no information for this dataset.
   if (D.decisions.length < 2) $("colorby").querySelector('[value="decision"]').remove();
   if (D.areas.length < 2) $("colorby").querySelector('[value="area"]').remove();
+  if (D.sites.length < 2) $("colorby").querySelector('[value="site"]').remove();
   computeStyle($("colorby").value);
   buildHaystack();
   await initPlot();

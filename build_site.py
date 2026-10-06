@@ -50,6 +50,7 @@ def build(papers, layout):
     decision_idx = [decisions.index(d) for d in dec]
     areas, area_idx = intern([p["area"] for p in papers])
     tracks, track_idx = intern([p["track"] for p in papers])
+    sites, site_idx = intern([p.get("site", "") for p in papers])
 
     core = {
         "meta": {"name": config.NAME, "n": len(papers)},
@@ -57,6 +58,7 @@ def build(papers, layout):
         "decisions": decisions,
         "areas": areas,
         "tracks": tracks,
+        "sites": sites,
         "id": [p["id"] for p in papers],
         "x": x,
         "y": y,
@@ -64,6 +66,7 @@ def build(papers, layout):
         "dec": decision_idx,
         "area": area_idx,
         "track": track_idx,
+        "site": site_idx,
         "title": [p["title"] for p in papers],
         "nn": layout["neighbors"],
     }

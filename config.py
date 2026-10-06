@@ -21,3 +21,9 @@ VENUES = {
 
 OPENREVIEW_API = "https://api2.openreview.net"
 OPENREVIEW_URL = "https://openreview.net"
+
+# neurips.cc virtual site (source used while OpenReview has not released the 2026 papers).
+# One listing per location; each card links to a paper page that carries the abstract.
+SITE_URL = "https://neurips.cc"
+SITE_YEAR = 2026
+SITE_LOCATIONS = ["sydney", "atlanta", "paris"]

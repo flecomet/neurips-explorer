@@ -13,15 +13,22 @@ Nearby points are semantically similar papers, so a cluster is a topic.
 
 ## Status
 
-The code is written and unit-tested; the paper data has not been generated yet. The scraper reads
-the public [OpenReview](https://openreview.net) API, which was not reachable from the environment
-that wrote this repository, so it has not been run against the live NeurIPS 2026 data. Expect to
-check the venue ids in [`config.py`](config.py) on the first run (see Setup).
+The code is unit-tested; the paper data has not been generated yet.
+
+- **OpenReview** has not released the 2026 papers (the venue group has `public_submissions = false`,
+  and every 2026 query returns 0 notes while 2025 returns papers). It also answers scripts running
+  on GitHub's servers with a human-verification challenge. `scrape.py` (OpenReview) is kept for
+  when the papers are published.
+- **neurips.cc** already lists the accepted papers per location (Sydney, Atlanta, Paris).
+  `scrape_site.py` reads those listings and each paper page. The listing parser was written
+  against real card markup. The paper-page parser (where the abstract sits) was written without
+  seeing a real page, so `python scrape_site.py --probe` reports what it finds; the refresh
+  workflow runs that first.
 
 ## Features
 
 - Map of all papers with topic names drawn on it; more names appear as you zoom in.
-- Color by topic, presentation type (oral / spotlight / poster, also encoded by marker size)
+- Color by topic, location (Sydney / Atlanta / Paris), presentation type (oral / spotlight / poster, also encoded by marker size)
   or OpenReview primary area. Palette for presentation type is colorblind-safe.
 - Topics list: click a topic to zoom to it and list its papers.
 - Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, the rest dim.
@@ -39,7 +46,7 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 
 | Step | Script | Output |
 |------|--------|--------|
-| Fetch accepted papers from OpenReview | `scrape.py` | `data/neurips_2026_papers.json` |
+| Fetch accepted papers from neurips.cc (or OpenReview) | `scrape_site.py` (`scrape.py`) | `data/neurips_2026_papers.json` |
 | Embed title + abstract with SPECTER2 | `embed.py` | `data/neurips_2026_specter2.npy` (float16) |
 | UMAP to 2D, HDBSCAN clusters, TF-IDF topic names, nearest neighbours | `layout.py` | `data/neurips_2026_layout.json` |
 | Merge into the site payload | `build_site.py` | `site/data.json`, `site/details.json` |
@@ -51,35 +58,22 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 1. Create the GitHub repository (public: GitHub Pages is free only for public repositories),
    push this code to `main`.
 2. Settings, Pages, Source: **GitHub Actions**.
-3. Actions tab, **Refresh data**, Run workflow. It runs the whole pipeline on a GitHub runner
-   (embedding on CPU takes tens of minutes), commits `data/`, and starts the Pages deployment.
-4. **OpenReview refuses scripts on GitHub's servers.** From the Actions runner, `scrape.py` gets
-   `ChallengeRequiredError` (a human-verification challenge) for every venue, including past years.
-   Scrape from your own computer instead (see "Scrape locally" below), commit
-   `data/neurips_2026_papers.json`, and run **Refresh data** with the **scrape** box unticked. The
-   workflow then only embeds and lays out, which needs no OpenReview access.
-5. If `scrape.py` reports 0 papers for a track, look up the venue id on
-   `https://openreview.net/group?id=NeurIPS.cc/2026`, fix `VENUES` in `config.py`, and rerun.
-
-## Scrape locally
-
-```shell
-git clone https://github.com/flecomet/neurips-explorer && cd neurips-explorer
-pip install requests
-python scrape.py
-git add data && git commit -m "Add NeurIPS 2026 papers" && git push
-```
-
-If that also reports `ChallengeRequiredError`, use a browser, which passes the check: open
-https://openreview.net, paste [`tools/browser_download.js`](tools/browser_download.js) into the
-developer console, then run `python scrape.py --raw neurips2026_raw.json`. Optionally set
-`OPENREVIEW_USERNAME` and `OPENREVIEW_PASSWORD` to make `scrape.py` log in first.
+3. Actions tab, **Refresh data**, Run workflow with source `neurips.cc`. It runs the whole pipeline
+   on a GitHub runner (embedding on CPU takes tens of minutes), commits `data/`, and starts the
+   Pages deployment. The **Probe neurips.cc** step prints what the site returned; if the scrape
+   step then fails, that output shows what the parser needs to change.
+4. Other sources: `committed` uses `data/neurips_2026_papers.json` as it is in the repository.
+   `openreview` does not work from GitHub runners (human-verification challenge). Once OpenReview
+   publishes the papers, scrape from your own machine with `python scrape.py`, or from a browser:
+   open https://openreview.net, paste [`tools/browser_download.js`](tools/browser_download.js) into
+   the developer console, then run `python scrape.py --raw neurips2026_raw.json`. Commit the data
+   and run the workflow with source `committed`. The venue ids are in [`config.py`](config.py).
 
 ## Run locally
 
 ```shell
 pip install -r requirements-pipeline.txt
-python scrape.py        # or: python scrape.py --venue "Main track=NeurIPS.cc/2026/Conference"
+python scrape_site.py   # neurips.cc; for OpenReview: python scrape.py
 python embed.py         # GPU recommended, CPU works
 python layout.py        # --min-cluster-size 25 --n-neighbors 15
 python build_site.py

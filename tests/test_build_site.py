@@ -23,7 +23,7 @@ def test_columns_are_aligned():
     papers, layout = make()
     core, details = build_site.build(papers, layout)
     n = len(papers)
-    for key in ("id", "x", "y", "c", "dec", "area", "track", "title", "nn"):
+    for key in ("id", "x", "y", "c", "dec", "area", "track", "site", "title", "nn"):
         assert len(core[key]) == n, key
     for key in ("authors", "abstract", "tldr", "kw", "pdf", "forum"):
         assert len(details[key]) == n, key

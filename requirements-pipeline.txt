@@ -5,3 +5,4 @@ adapters
 umap-learn
 scikit-learn>=1.3
 numpy
+beautifulsoup4
