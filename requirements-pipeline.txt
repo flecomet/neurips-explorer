@@ -1,0 +1,7 @@
+requests
+torch
+transformers
+adapters
+umap-learn
+scikit-learn>=1.3
+numpy

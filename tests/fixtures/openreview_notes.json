@@ -1,0 +1,31 @@
+{
+  "_comment": "Hand-written sample in the shape documented for the OpenReview API v2 /notes endpoint. Synthetic: not real NeurIPS 2026 data.",
+  "notes": [
+    {
+      "id": "AbC123xyz",
+      "forum": "AbC123xyz",
+      "content": {
+        "title": {"value": "Sparse   Attention\nfor Long Contexts"},
+        "authors": {"value": ["Ada Example", "Grace Sample"]},
+        "abstract": {"value": "We study sparse attention.\nIt is faster."},
+        "pdf": {"value": "/pdf/abc123.pdf"},
+        "keywords": {"value": ["attention", "efficiency"]},
+        "TLDR": {"value": "Sparse attention is fast."},
+        "primary_area": {"value": "deep_learning_architectures"},
+        "venue": {"value": "NeurIPS 2026 spotlight"},
+        "venueid": {"value": "NeurIPS.cc/2026/Conference"}
+      }
+    },
+    {
+      "id": "Zzz999",
+      "forum": "Zzz999",
+      "content": {
+        "title": {"value": "A Bare Minimum Paper"},
+        "authors": {"value": ["Solo Author"]},
+        "abstract": {"value": "Only the required fields."},
+        "venue": {"value": "NeurIPS 2026 Conference"}
+      }
+    }
+  ],
+  "count": 2
+}
