@@ -1,12 +1,13 @@
-"""Scrape accepted NeurIPS 2026 papers from the neurips.cc virtual site.
+"""Read the accepted NeurIPS 2026 papers from the neurips.cc virtual site.
 
-Writes data/neurips_2026_papers.json in the same format as scrape.py (OpenReview).
-For each location (Sydney, Atlanta, Paris) it reads the listing
-https://neurips.cc/virtual/2026/loc/<location>/papers.html, then fetches every paper page for
-its abstract. Fields the site does not provide (keywords, TL;DR, primary area, PDF) stay empty.
+Writes data/neurips_2026_papers.json in the same format as scrape.py (OpenReview). The site's
+listing pages are rendered by JavaScript from two JSON files (papers and abstracts), which this
+script downloads directly. Fields the site does not provide (keywords, TL;DR, primary area,
+PDF) stay empty. The JSON layout was not known when this was written, so field names are
+looked up from lists of likely candidates and the structure is printed on every run.
 
     python scrape_site.py           # full scrape
-    python scrape_site.py --probe   # report what the listing and one paper page contain
+    python scrape_site.py --probe   # print the structure of the JSON files and one paper page
 """
 import argparse
 import json
@@ -14,6 +15,7 @@ import os
 import re
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin
 
@@ -28,92 +30,156 @@ USER_AGENT = "neurips-explorer (+https://github.com/flecomet/neurips-explorer)"
 # Presentation types in increasing rank; a paper listed twice keeps the highest.
 RANK = {"poster": 0, "spotlight": 1, "oral": 2}
 MAX_MISSING_ABSTRACTS = 0.02
+MIN_ABSTRACT_CHARS = 150
 
-EVENT_HREF = re.compile(r"/virtual/\d{4}/([a-z_\-]+)/(\d+)")
+ID_KEYS = ["id", "eventmedia_id", "event_id", "uid"]
+TITLE_KEYS = ["name", "title"]
+AUTHOR_KEYS = ["authors", "author", "speakers"]
+ABSTRACT_KEYS = ["abstract", "description"]
+TYPE_KEYS = ["eventtype", "event_type", "type"]
+DECISION_KEYS = ["decision"]
+URL_KEYS = ["virtualsite_url", "url", "paper_url", "sourceurl"]
+# Fields that may name the location, tried in this order (titles are not searched: a paper
+# can mention Paris without being presented there).
+LOCATION_KEYS = ["location", "loc", "site", "session", "session_name", "room_name", "room", "venue"]
 
 
 def clean(text):
-    return " ".join(text.split())
+    return " ".join(str(text).split())
 
 
-def parse_listing(html, site):
-    """Cards on a listing page -> [{event_id, type, url, title, authors, site}]."""
-    soup = BeautifulSoup(html, "html.parser")
-    cards = []
-    for card in soup.select(".pp-card"):
-        link = next(
-            (a for a in card.find_all("a", href=True) if EVENT_HREF.search(a["href"])), None
-        )
-        title = card.select_one(".card-title")
-        if link is None or title is None:
-            continue
-        kind, event_id = EVENT_HREF.search(link["href"]).groups()
-        authors = [
-            clean(a.get_text())
-            for a in card.select(".card-subtitle a[href*='filter=author']")
-        ]
-        cards.append({
-            "event_id": event_id,
-            "type": kind,
-            "url": urljoin(config.SITE_URL, link["href"]),
-            "title": clean(title.get_text()),
-            "authors": ", ".join(authors),
-            "site": site.capitalize(),
-        })
-    return cards
+def first(rec, keys):
+    for k in keys:
+        v = rec.get(k)
+        if v not in (None, "", [], {}):
+            return v
+    return ""
 
 
-def merge_cards(cards):
-    """One record per paper: the same title can appear as several events (oral and poster)."""
+def find_records(data):
+    """The list of paper-like dicts in a JSON document of unknown shape."""
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    if isinstance(data, dict):
+        for key in ("results", "papers", "events", "items", "data"):
+            if isinstance(data.get(key), list):
+                return find_records(data[key])
+        lists = [v for v in data.values() if isinstance(v, list) and v and isinstance(v[0], dict)]
+        if lists:
+            return max(lists, key=len)
+        vals = list(data.values())
+        if vals and all(isinstance(v, dict) for v in vals):
+            return [dict(v, id=v.get("id", k)) for k, v in data.items()]
+    return []
+
+
+def abstract_map(data):
+    """id -> abstract, from a file that is either {id: text} or a list of records."""
+    if isinstance(data, dict) and data and all(isinstance(v, str) for v in data.values()):
+        return {str(k): v for k, v in data.items()}
+    out = {}
+    for rec in find_records(data):
+        text, rid = first(rec, ABSTRACT_KEYS), first(rec, ID_KEYS)
+        if text and rid != "":
+            out[str(rid)] = clean(text)
+    return out
+
+
+def author_names(value):
+    if isinstance(value, str):
+        return clean(value)
+    names = []
+    for a in value or []:
+        if isinstance(a, dict):
+            a = first(a, ["fullname", "full_name", "name", "author"])
+        if a:
+            names.append(clean(a))
+    return ", ".join(names)
+
+
+def presentation(rec):
+    """'oral' | 'spotlight' | 'poster' | 'other' from the event type and decision text."""
+    text = f"{first(rec, TYPE_KEYS)} {first(rec, DECISION_KEYS)}".lower()
+    for kind in ("oral", "spotlight", "poster"):
+        if kind in text:
+            return kind
+    return "other"
+
+
+def location(rec):
+    for key in LOCATION_KEYS:
+        value = str(rec.get(key) or "")
+        for name in config.SITE_LOCATIONS:
+            if re.search(rf"\b{name}\b", value, re.I):
+                return name
+    return ""
+
+
+def event_url(rec, kind):
+    url = str(first(rec, URL_KEYS))
+    if url.startswith("/virtual/") or "neurips.cc" in url:
+        return urljoin(config.SITE_URL, url)
+    return f"{config.SITE_URL}/virtual/{config.SITE_YEAR}/{kind if kind in RANK else 'poster'}/{first(rec, ID_KEYS)}"
+
+
+def parse_events(records, abstracts):
+    """Papers JSON records -> [{id, title, authors, abstract, kind, site, url}], one per paper.
+    Non-paper events (talks, workshops) are dropped; a paper listed as both an oral and a poster
+    keeps the highest presentation."""
     best = {}
-    for c in cards:
-        key = re.sub(r"\W+", " ", c["title"]).strip().lower()
-        if key not in best or RANK.get(c["type"], -1) > RANK.get(best[key]["type"], -1):
-            best[key] = c
+    for rec in records:
+        title, rid = clean(first(rec, TITLE_KEYS)), first(rec, ID_KEYS)
+        kind = presentation(rec)
+        has_type = first(rec, TYPE_KEYS) or first(rec, DECISION_KEYS)
+        if not title or rid == "" or (has_type and kind == "other"):
+            continue
+        cand = {
+            "id": str(rid),
+            "title": title,
+            "authors": author_names(first(rec, AUTHOR_KEYS)),
+            "abstract": clean(first(rec, ABSTRACT_KEYS)) or abstracts.get(str(rid), ""),
+            "kind": kind if has_type else "poster",
+            "site": location(rec),
+            "url": event_url(rec, kind),
+        }
+        key = re.sub(r"\W+", " ", title).strip().lower()
+        old = best.get(key)
+        if old is None or RANK.get(cand["kind"], -1) > RANK.get(old["kind"], -1):
+            for field in ("site", "authors", "abstract"):  # keep what the other event knew
+                cand[field] = cand[field] or (old or {}).get(field, "")
+            best[key] = cand
+        else:
+            for field in ("site", "authors", "abstract"):
+                old[field] = old[field] or cand[field]
     return list(best.values())
 
 
-# Tried in order. The first that yields a plausible abstract wins; the name is counted so
-# the scrape log shows which selector the site actually needs.
 ABSTRACT_SELECTORS = [
-    ("#abstractExample", lambda s: s.select_one("#abstractExample")),
-    (".abstract-text-inner", lambda s: s.select_one(".abstract-text-inner")),
-    (".abstract", lambda s: s.select_one(".abstract")),
-    ("meta citation_abstract", lambda s: s.select_one("meta[name=citation_abstract]")),
-    ("meta og:description", lambda s: s.select_one("meta[property='og:description']")),
-    ("meta description", lambda s: s.select_one("meta[name=description]")),
+    ".abstract-text-inner", "#abstractExample", ".abstract-text", ".abstract-content", ".abstract",
 ]
-MIN_ABSTRACT_CHARS = 150
 
 
 def extract_abstract(html):
-    """-> (abstract, how). `how` names the strategy, or is None when nothing was found."""
+    """Abstract text from a paper page, or "" ('.abstract-text-inner' on the real site)."""
     soup = BeautifulSoup(html, "html.parser")
-    for name, finder in ABSTRACT_SELECTORS:
-        node = finder(soup)
-        if node is None:
-            continue
-        text = clean(node.get("content", "") if node.name == "meta" else node.get_text(" "))
-        text = re.sub(r"^abstract\s*:?\s*", "", text, flags=re.I)
-        if len(text) >= MIN_ABSTRACT_CHARS:
-            return text, name
-    # Last resort: the longest paragraph on the page.
-    paras = [clean(p.get_text(" ")) for p in soup.find_all("p")]
-    paras = [p for p in paras if len(p) >= MIN_ABSTRACT_CHARS]
-    if paras:
-        return max(paras, key=len), "longest <p>"
-    return "", None
+    for sel in ABSTRACT_SELECTORS:
+        node = soup.select_one(sel)
+        if node is not None:
+            text = re.sub(r"^abstract\s*:?\s*", "", clean(node.get_text(" ")), flags=re.I)
+            if len(text) >= MIN_ABSTRACT_CHARS:
+                return text
+    return ""
 
 
-def get(session, url):
+def get(session, url, as_json=False):
     delay = 2.0
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = session.get(url, timeout=60)
+            resp = session.get(url, timeout=120)
             if resp.status_code == 429 or resp.status_code >= 500:
                 raise requests.HTTPError(f"HTTP {resp.status_code}")
             resp.raise_for_status()
-            return resp.text
+            return resp.json() if as_json else resp.text
         except requests.RequestException as exc:
             if attempt == MAX_RETRIES:
                 raise
@@ -122,101 +188,55 @@ def get(session, url):
             delay *= 2
 
 
-def listing_url(site):
-    return f"{config.SITE_URL}/virtual/{config.SITE_YEAR}/loc/{site}/papers.html"
-
-
-def fetch_listings(session):
-    cards = []
-    for site in config.SITE_LOCATIONS:
-        found = parse_listing(get(session, listing_url(site)), site)
-        print(f"{site}: {len(found)} cards")
-        cards.extend(found)
-    return cards
-
-
-def to_paper(card, abstract):
-    return {
-        "id": f"nc{card['event_id']}",
-        "title": card["title"],
-        "authors": card["authors"],
-        "abstract": abstract,
-        "pdf_link": "",
-        "forum_link": card["url"],
-        "keywords": [],
-        "tldr": "",
-        "area": "",
-        "decision": card["type"] if card["type"] in RANK else "other",
-        "track": "",
-        "site": card["site"],
-    }
-
-
-KNOWN_PAPER_URL = "/virtual/2026/poster/156053"  # a paper seen on the site, used as a sample
-KNOWN_TITLE = "DyPSI"
-
-
-def snippet(html, i, before=150, after=350):
-    return clean(html[max(0, i - before) : i + after])
-
-
-SCRIPT_SRC = re.compile(r"""<script[^>]+src=["']([^"']+)""")
-JSON_NAME = re.compile(r"[\w/.\-]+\.json[\w?=&]*")
-DATA_ASSIGN = re.compile(r"(?:var|let|const)\s+(\w+)\s*=\s*[\[{]")
-LOADERS = [re.compile(p) for p in (r"fetch\(", r"getJSON\(", r"\$\.get\(", r"\$\.ajax\(", r"XMLHttpRequest")]
-
-
-def diagnose_listing(html, needle=KNOWN_TITLE):
-    """Say where a listing page keeps its papers when no server-rendered cards are found."""
-    title = BeautifulSoup(html, "html.parser").title
-    kinds = {}
-    for kind, _ in EVENT_HREF.findall(html):
-        kinds[kind] = kinds.get(kind, 0) + 1
-    lines = [
-        f"<title>: {clean(title.get_text()) if title else None}",
-        f"script srcs: {SCRIPT_SRC.findall(html)[:15]}",
-        f"/virtual/<year>/<type>/<id> links in raw html, by type: {kinds}",
-        f"'.json' strings: {sorted(set(JSON_NAME.findall(html)))[:15]}",
-    ]
-    for pat in LOADERS:
-        for m in list(pat.finditer(html))[:2]:
-            lines.append(f"{pat.pattern} at {m.start()}: {snippet(html, m.start(), 100, 250)}")
-    lines.append(f"inline data-like assignments: {DATA_ASSIGN.findall(html)[:15]}")
-    i = html.find(needle)
-    lines.append(
-        f"first occurrence of {needle!r} at {i}: {snippet(html, i, 400, 600)}"
-        if i >= 0 else f"{needle!r} does not occur in the raw html"
-    )
-    return lines
-
-
-def report_paper_page(session, url):
-    page = get(session, url)
-    abstract, how = extract_abstract(page)
-    print(f"paper page {url}: {len(page)} bytes; abstract via {how!r}: {abstract[:200]!r}")
-    soup = BeautifulSoup(page, "html.parser")
-    print("  meta names:", sorted({m.get("name") or m.get("property") for m in soup.find_all("meta")} - {None}))
-    print("  ids:", sorted({t["id"] for t in soup.find_all(id=True)})[:40])
-    print("  classes containing 'abstract':", sorted({c for t in soup.find_all(class_=True) for c in t["class"] if "abstract" in c.lower()}))
-    if how is None:
-        i = page.find("Physics sensing")  # start of the sample paper's abstract
-        print("  abstract text in raw html:", snippet(page, i, 300, 300) if i >= 0 else "not found in raw html")
+def describe(name, data):
+    """Print the layout of a JSON document, so a mismatch with the parser is visible."""
+    recs = find_records(data)
+    print(f"{name}: {type(data).__name__}"
+          + (f", top-level keys {list(data)[:12]}" if isinstance(data, dict) else "")
+          + f", {len(recs)} records")
+    if recs:
+        print("  fields (records having each):", dict(Counter(k for r in recs for k in r).most_common(30)))
+        print("  first record:", json.dumps(recs[0], ensure_ascii=False)[:900])
+    elif isinstance(data, dict):
+        k = next(iter(data), None)
+        print("  first entry:", json.dumps({k: data.get(k)}, ensure_ascii=False)[:500])
 
 
 def probe(session):
     """Print what the site returns, to adapt the parser without guessing."""
-    site = config.SITE_LOCATIONS[0]
-    html = get(session, listing_url(site))
-    print(f"listing {site}: {len(html)} bytes, {html.count('pp-card')} 'pp-card' strings")
-    cards = parse_listing(html, site)
-    print(f"parsed cards: {len(cards)}; types: { {c['type'] for c in cards} }")
-    for c in cards[:2]:
-        print("  sample card:", json.dumps(c)[:300])
-    if not cards:
-        print("No server-rendered cards. Where the page keeps its data:")
-        for line in diagnose_listing(html):
-            print(" ", line)
-    report_paper_page(session, cards[0]["url"] if cards else config.SITE_URL + KNOWN_PAPER_URL)
+    papers = get(session, config.SITE_PAPERS_JSON, as_json=True)
+    describe("papers json", papers)
+    try:
+        describe("abstracts json", get(session, config.SITE_ABSTRACTS_JSON, as_json=True))
+    except requests.RequestException as exc:
+        print("abstracts json:", exc)
+    parsed = parse_events(find_records(papers), {})
+    print(f"parse_events: {len(parsed)} papers;",
+          "kinds", dict(Counter(p["kind"] for p in parsed)),
+          "| sites", dict(Counter(p["site"] for p in parsed)),
+          "| with abstract", sum(bool(p["abstract"]) for p in parsed),
+          "| with authors", sum(bool(p["authors"]) for p in parsed))
+    if parsed:
+        print("  sample:", json.dumps(parsed[0], ensure_ascii=False)[:500])
+        page = get(session, parsed[0]["url"])
+        print(f"paper page {parsed[0]['url']}: abstract found: {bool(extract_abstract(page))}")
+
+
+def to_paper(p, abstract):
+    return {
+        "id": f"nc{p['id']}",
+        "title": p["title"],
+        "authors": p["authors"],
+        "abstract": abstract,
+        "pdf_link": "",
+        "forum_link": p["url"],
+        "keywords": [],
+        "tldr": "",
+        "area": "",
+        "decision": p["kind"],
+        "track": "",
+        "site": p["site"],
+    }
 
 
 def main():
@@ -230,38 +250,47 @@ def main():
         probe(session)
         return
 
-    cards = merge_cards(fetch_listings(session))
-    if not cards:
-        sys.exit("No papers found on the listing pages. Run with --probe to inspect them.")
-    print(f"{len(cards)} unique papers; fetching abstracts...")
+    raw = get(session, config.SITE_PAPERS_JSON, as_json=True)
+    describe("papers json", raw)
+    try:
+        abstracts = abstract_map(get(session, config.SITE_ABSTRACTS_JSON, as_json=True))
+    except requests.RequestException as exc:
+        print("abstracts json unavailable:", exc)
+        abstracts = {}
+    print(f"{len(abstracts)} abstracts in the abstracts file")
 
-    def work(card):
-        try:
-            return extract_abstract(get(session, card["url"]))
-        except requests.RequestException as exc:
-            return "", f"error: {exc}"
+    papers = parse_events(find_records(raw), abstracts)
+    if not papers:
+        sys.exit("No papers recognised in the papers JSON. The structure printed above shows why.")
+    print(f"{len(papers)} papers;", dict(Counter(p["kind"] for p in papers)),
+          "| sites", dict(Counter(p["site"] for p in papers)))
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        results = list(pool.map(work, cards))
+    # Abstracts missing from both JSON files come from the paper page.
+    todo = [p for p in papers if not p["abstract"]]
+    if todo:
+        print(f"fetching {len(todo)} abstracts from paper pages...")
 
-    papers, how_counts, missing = [], {}, []
-    for card, (abstract, how) in zip(cards, results):
-        how_counts[how] = how_counts.get(how, 0) + 1
-        if not abstract:
-            missing.append(card["url"])
-            continue
-        papers.append(to_paper(card, abstract))
-    print("abstract source:", how_counts)
-    if len(missing) > MAX_MISSING_ABSTRACTS * len(cards):
-        sys.exit(f"{len(missing)}/{len(cards)} pages gave no abstract, e.g. {missing[:3]}")
+        def work(p):
+            try:
+                return extract_abstract(get(session, p["url"]))
+            except requests.RequestException:
+                return ""
+
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            for p, text in zip(todo, pool.map(work, todo)):
+                p["abstract"] = text
+
+    missing = [p["url"] for p in papers if not p["abstract"]]
+    if len(missing) > MAX_MISSING_ABSTRACTS * len(papers):
+        sys.exit(f"{len(missing)}/{len(papers)} papers have no abstract, e.g. {missing[:3]}")
     if missing:
         print(f"skipped {len(missing)} papers without an abstract: {missing[:5]}")
 
-    papers.sort(key=lambda p: p["id"])
+    out = sorted((to_paper(p, p["abstract"]) for p in papers if p["abstract"]), key=lambda p: p["id"])
     os.makedirs(os.path.dirname(config.PAPERS_PATH), exist_ok=True)
     with open(config.PAPERS_PATH, "w") as f:
-        json.dump(papers, f, ensure_ascii=False)
-    print(f"Wrote {len(papers)} papers to {config.PAPERS_PATH}")
+        json.dump(out, f, ensure_ascii=False)
+    print(f"Wrote {len(out)} papers to {config.PAPERS_PATH}")
 
 
 if __name__ == "__main__":

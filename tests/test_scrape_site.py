@@ -2,74 +2,94 @@ import pathlib
 
 import scrape_site
 
-FIX = pathlib.Path(__file__).parent / "fixtures"
+ABS = "A long enough abstract. " * 10
 
 
-def read(name):
-    return (FIX / name).read_text()
+def rec(**kw):
+    base = {"id": 1, "name": "Paper One", "eventtype": "Poster", "session": "Sydney Poster Session 2"}
+    base.update(kw)
+    return base
 
 
-def test_parse_listing_reads_the_real_card_markup():
-    cards = scrape_site.parse_listing(read("site_listing.html"), "sydney")
-    assert len(cards) == 3
-    c = cards[0]
-    assert c["event_id"] == "156053" and c["type"] == "poster"
-    assert c["url"] == "https://neurips.cc/virtual/2026/poster/156053"
-    assert c["title"].startswith("DyPSI: Dynamic Physics Sensing")
-    assert "\n" not in c["title"] and c["title"] == c["title"].strip()
-    assert c["authors"] == "Yizhou Zhang, Panqi Chen"
-    assert c["site"] == "Sydney"
+# NOTE: these JSON shapes are guesses (the real files were not visible when written).
+
+def test_find_records_handles_common_shapes():
+    r = [rec()]
+    assert scrape_site.find_records(r) == r
+    assert scrape_site.find_records({"count": 1, "results": r}) == r
+    assert scrape_site.find_records({"meta": {}, "stuff": r}) == r
+    keyed = scrape_site.find_records({"7": {"name": "X"}})
+    assert keyed == [{"name": "X", "id": "7"}]
+    assert scrape_site.find_records("nonsense") == []
 
 
-def test_merge_keeps_highest_presentation_and_collapses_duplicates():
-    cards = scrape_site.parse_listing(read("site_listing.html"), "sydney")
-    cards.append(dict(cards[1], event_id="1", type="oral", title=cards[0]["title"].upper()))
-    merged = scrape_site.merge_cards(cards)
-    assert len(merged) == 2  # the poster/oral pair of the first paper became one
-    first = next(c for c in merged if c["title"].lower().startswith("dypsi"))
-    assert first["type"] == "oral"
+def test_abstract_map_from_dict_or_records():
+    assert scrape_site.abstract_map({"1": "a", 2: "b"}) == {"1": "a", "2": "b"}
+    assert scrape_site.abstract_map({"results": [{"id": 3, "abstract": " x  y "}]}) == {"3": "x y"}
 
 
-def test_abstract_from_dedicated_element():
-    text, how = scrape_site.extract_abstract(read("site_paper.html"))
-    assert how == "#abstractExample"
-    assert text.startswith("Physics sensing") and not text.lower().startswith("abstract")
+def test_author_names_accepts_dicts_strings_and_text():
+    assert scrape_site.author_names([{"fullname": "A B"}, {"name": "C D"}, "E F"]) == "A B, C D, E F"
+    assert scrape_site.author_names("A B, C D") == "A B, C D"
+    assert scrape_site.author_names(None) == ""
 
 
-def test_abstract_from_meta_when_no_element():
-    text, how = scrape_site.extract_abstract(read("site_paper_meta.html"))
-    assert how == "meta og:description" and text.startswith("Physics sensing")
+def test_presentation_from_type_and_decision():
+    assert scrape_site.presentation(rec(eventtype="Oral")) == "oral"
+    assert scrape_site.presentation(rec(eventtype="Poster", decision="Accept (spotlight)")) == "spotlight"
+    assert scrape_site.presentation(rec(eventtype="Invited Talk")) == "other"
 
 
-def test_abstract_falls_back_to_longest_paragraph():
-    html = "<html><body><p>nav</p><p>" + "word " * 60 + "</p></body></html>"
-    text, how = scrape_site.extract_abstract(html)
-    assert how == "longest <p>" and len(text) > 150
+def test_parse_events_basics():
+    out = scrape_site.parse_events(
+        [rec(authors=[{"fullname": "A B"}], abstract=ABS)], {}
+    )
+    assert out == [{
+        "id": "1", "title": "Paper One", "authors": "A B", "abstract": ABS.strip(),
+        "kind": "poster", "site": "Sydney",
+        "url": "https://neurips.cc/virtual/2026/poster/1",
+    }]
 
 
-def test_no_abstract_found():
-    assert scrape_site.extract_abstract(read("site_paper_none.html")) == ("", None)
+def test_parse_events_takes_abstract_from_second_file_and_drops_non_papers():
+    out = scrape_site.parse_events(
+        [rec(), rec(id=2, name="A Workshop Talk", eventtype="Invited Talk")], {"1": "from abstracts file"}
+    )
+    assert [p["title"] for p in out] == ["Paper One"]
+    assert out[0]["abstract"] == "from abstracts file"
+
+
+def test_parse_events_merges_oral_and_poster_of_one_paper():
+    out = scrape_site.parse_events(
+        [rec(id=1, authors="A B"), rec(id=2, eventtype="Oral", session="", name="paper one")], {}
+    )
+    assert len(out) == 1
+    p = out[0]
+    assert p["kind"] == "oral" and p["id"] == "2"
+    assert p["site"] == "Sydney" and p["authors"] == "A B"  # filled in from the poster event
+
+
+def test_location_ignores_the_title():
+    r = rec(name="Paris Agreement Modelling", session="Atlanta Poster Session 1")
+    assert scrape_site.location(r) == "Atlanta"
+    assert scrape_site.location(rec(session="", name="Paris Agreement")) == ""
+
+
+def test_event_url_prefers_the_records_own_link():
+    assert scrape_site.event_url(rec(url="/virtual/2026/oral/9"), "oral") == "https://neurips.cc/virtual/2026/oral/9"
+    assert scrape_site.event_url(rec(), "oral") == "https://neurips.cc/virtual/2026/oral/1"
+
+
+def test_extract_abstract_from_page():
+    html = (pathlib.Path(__file__).parent / "fixtures" / "site_paper.html").read_text()
+    text = scrape_site.extract_abstract(html)
+    assert text.startswith("Physics sensing") and text.endswith("framework.")
+    assert scrape_site.extract_abstract("<html><body><p>nothing</p></body></html>") == ""
 
 
 def test_to_paper_matches_build_site_schema():
-    card = scrape_site.parse_listing(read("site_listing.html"), "paris")[1]
-    p = scrape_site.to_paper(card, "abs")
-    assert p["id"] == "nc156054" and p["decision"] == "oral" and p["site"] == "Paris"
+    p = scrape_site.parse_events([rec(abstract=ABS)], {})[0]
+    paper = scrape_site.to_paper(p, p["abstract"])
+    assert paper["id"] == "nc1" and paper["decision"] == "poster" and paper["site"] == "Sydney"
     for key in ("title", "authors", "abstract", "pdf_link", "forum_link", "keywords", "tldr", "area", "decision", "track"):
-        assert key in p
-
-
-def test_diagnose_listing_finds_inline_data_and_endpoints():
-    html = (
-        "<html><head><title>NeurIPS 2026 Papers</title>"
-        '<script src="/static/virtual/js/virtual.js"></script></head><body>'
-        "<script>const papers = [{\"name\": \"DyPSI: x\", \"url\": \"/virtual/2026/poster/5\"}];"
-        "fetch('/static/virtual/data/neurips-2026-orals-posters.json')</script></body></html>"
-    )
-    text = "\n".join(scrape_site.diagnose_listing(html))
-    assert "/static/virtual/js/virtual.js" in text
-    assert "{'poster': 1}" in text
-    assert "neurips-2026-orals-posters.json" in text
-    assert "papers" in text  # inline assignment
-    assert "DyPSI: x" in text
-    assert "does not occur" in "\n".join(scrape_site.diagnose_listing("<html></html>"))
+        assert key in paper

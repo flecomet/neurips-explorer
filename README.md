@@ -19,11 +19,13 @@ The code is unit-tested; the paper data has not been generated yet.
   and every 2026 query returns 0 notes while 2025 returns papers). It also answers scripts running
   on GitHub's servers with a human-verification challenge. `scrape.py` (OpenReview) is kept for
   when the papers are published.
-- **neurips.cc** already lists the accepted papers per location (Sydney, Atlanta, Paris).
-  `scrape_site.py` reads those listings and each paper page. The listing parser was written
-  against real card markup. The paper-page parser (where the abstract sits) was written without
-  seeing a real page, so `python scrape_site.py --probe` reports what it finds; the refresh
-  workflow runs that first.
+- **neurips.cc** already lists the accepted papers per location (Sydney, Atlanta, Paris). Its
+  listing pages are rendered by JavaScript from two JSON files
+  (`/static/virtual/data/neurips-2026-orals-posters.json` and `...-abstracts.json`), which
+  `scrape_site.py` downloads. The abstract extraction from a paper page was checked against the real
+  site. The layout of the two JSON files was not known when the parser was written, so field names
+  are looked up from lists of likely candidates, and every run prints the structure it found.
+  `python scrape_site.py --probe` prints that structure without writing anything.
 
 ## Features
 

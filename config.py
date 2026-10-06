@@ -22,8 +22,10 @@ VENUES = {
 OPENREVIEW_API = "https://api2.openreview.net"
 OPENREVIEW_URL = "https://openreview.net"
 
-# neurips.cc virtual site (source used while OpenReview has not released the 2026 papers).
-# One listing per location; each card links to a paper page that carries the abstract.
+# neurips.cc virtual site (used while OpenReview has not released the 2026 papers). Its listing
+# pages build their cards with JavaScript from two JSON files, which are read directly.
 SITE_URL = "https://neurips.cc"
 SITE_YEAR = 2026
-SITE_LOCATIONS = ["sydney", "atlanta", "paris"]
+SITE_PAPERS_JSON = f"{SITE_URL}/static/virtual/data/neurips-{SITE_YEAR}-orals-posters.json"
+SITE_ABSTRACTS_JSON = f"{SITE_URL}/static/virtual/data/neurips-{SITE_YEAR}-abstracts.json"
+SITE_LOCATIONS = ["Sydney", "Atlanta", "Paris"]
