@@ -57,3 +57,19 @@ def test_to_paper_matches_build_site_schema():
     assert p["id"] == "nc156054" and p["decision"] == "oral" and p["site"] == "Paris"
     for key in ("title", "authors", "abstract", "pdf_link", "forum_link", "keywords", "tldr", "area", "decision", "track"):
         assert key in p
+
+
+def test_diagnose_listing_finds_inline_data_and_endpoints():
+    html = (
+        "<html><head><title>NeurIPS 2026 Papers</title>"
+        '<script src="/static/virtual/js/virtual.js"></script></head><body>'
+        "<script>const papers = [{\"name\": \"DyPSI: x\", \"url\": \"/virtual/2026/poster/5\"}];"
+        "fetch('/static/virtual/data/neurips-2026-orals-posters.json')</script></body></html>"
+    )
+    text = "\n".join(scrape_site.diagnose_listing(html))
+    assert "/static/virtual/js/virtual.js" in text
+    assert "{'poster': 1}" in text
+    assert "neurips-2026-orals-posters.json" in text
+    assert "papers" in text  # inline assignment
+    assert "DyPSI: x" in text
+    assert "does not occur" in "\n".join(scrape_site.diagnose_listing("<html></html>"))

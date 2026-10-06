@@ -152,6 +152,57 @@ def to_paper(card, abstract):
     }
 
 
+KNOWN_PAPER_URL = "/virtual/2026/poster/156053"  # a paper seen on the site, used as a sample
+KNOWN_TITLE = "DyPSI"
+
+
+def snippet(html, i, before=150, after=350):
+    return clean(html[max(0, i - before) : i + after])
+
+
+SCRIPT_SRC = re.compile(r"""<script[^>]+src=["']([^"']+)""")
+JSON_NAME = re.compile(r"[\w/.\-]+\.json[\w?=&]*")
+DATA_ASSIGN = re.compile(r"(?:var|let|const)\s+(\w+)\s*=\s*[\[{]")
+LOADERS = [re.compile(p) for p in (r"fetch\(", r"getJSON\(", r"\$\.get\(", r"\$\.ajax\(", r"XMLHttpRequest")]
+
+
+def diagnose_listing(html, needle=KNOWN_TITLE):
+    """Say where a listing page keeps its papers when no server-rendered cards are found."""
+    title = BeautifulSoup(html, "html.parser").title
+    kinds = {}
+    for kind, _ in EVENT_HREF.findall(html):
+        kinds[kind] = kinds.get(kind, 0) + 1
+    lines = [
+        f"<title>: {clean(title.get_text()) if title else None}",
+        f"script srcs: {SCRIPT_SRC.findall(html)[:15]}",
+        f"/virtual/<year>/<type>/<id> links in raw html, by type: {kinds}",
+        f"'.json' strings: {sorted(set(JSON_NAME.findall(html)))[:15]}",
+    ]
+    for pat in LOADERS:
+        for m in list(pat.finditer(html))[:2]:
+            lines.append(f"{pat.pattern} at {m.start()}: {snippet(html, m.start(), 100, 250)}")
+    lines.append(f"inline data-like assignments: {DATA_ASSIGN.findall(html)[:15]}")
+    i = html.find(needle)
+    lines.append(
+        f"first occurrence of {needle!r} at {i}: {snippet(html, i, 400, 600)}"
+        if i >= 0 else f"{needle!r} does not occur in the raw html"
+    )
+    return lines
+
+
+def report_paper_page(session, url):
+    page = get(session, url)
+    abstract, how = extract_abstract(page)
+    print(f"paper page {url}: {len(page)} bytes; abstract via {how!r}: {abstract[:200]!r}")
+    soup = BeautifulSoup(page, "html.parser")
+    print("  meta names:", sorted({m.get("name") or m.get("property") for m in soup.find_all("meta")} - {None}))
+    print("  ids:", sorted({t["id"] for t in soup.find_all(id=True)})[:40])
+    print("  classes containing 'abstract':", sorted({c for t in soup.find_all(class_=True) for c in t["class"] if "abstract" in c.lower()}))
+    if how is None:
+        i = page.find("Physics sensing")  # start of the sample paper's abstract
+        print("  abstract text in raw html:", snippet(page, i, 300, 300) if i >= 0 else "not found in raw html")
+
+
 def probe(session):
     """Print what the site returns, to adapt the parser without guessing."""
     site = config.SITE_LOCATIONS[0]
@@ -162,15 +213,10 @@ def probe(session):
     for c in cards[:2]:
         print("  sample card:", json.dumps(c)[:300])
     if not cards:
-        print("first 1500 chars of listing:\n", html[:1500])
-        return
-    page = get(session, cards[0]["url"])
-    abstract, how = extract_abstract(page)
-    print(f"paper page {cards[0]['url']}: {len(page)} bytes; abstract via {how!r}: {abstract[:200]!r}")
-    soup = BeautifulSoup(page, "html.parser")
-    print("  meta names:", sorted({m.get("name") or m.get("property") for m in soup.find_all("meta")} - {None}))
-    print("  ids:", sorted({t["id"] for t in soup.find_all(id=True)})[:40])
-    print("  classes containing 'abstract':", sorted({c for t in soup.find_all(class_=True) for c in t["class"] if "abstract" in c.lower()}))
+        print("No server-rendered cards. Where the page keeps its data:")
+        for line in diagnose_listing(html):
+            print(" ", line)
+    report_paper_page(session, cards[0]["url"] if cards else config.SITE_URL + KNOWN_PAPER_URL)
 
 
 def main():
