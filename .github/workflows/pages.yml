@@ -31,7 +31,7 @@ jobs:
           else
             echo "::notice::No data/neurips_2026_layout.json yet. Run the 'Refresh data' workflow first."
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.check.outputs.has_data == 'true'
         with:
           python-version: "3.12"
