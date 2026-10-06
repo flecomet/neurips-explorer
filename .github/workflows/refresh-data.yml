@@ -6,6 +6,11 @@ name: Refresh data
 # camera-ready abstracts change.
 on:
   workflow_dispatch:
+    inputs:
+      scrape:
+        description: "Scrape OpenReview first. Untick if data/neurips_2026_papers.json was committed from your own machine."
+        type: boolean
+        default: true
 
 permissions:
   contents: write   # commit the regenerated data files
@@ -32,6 +37,7 @@ jobs:
           pip install -r requirements-pipeline.txt
       # Tells a blocked client/network (2025 also fails) from a 2026-specific problem.
       - name: Probe OpenReview
+        if: ${{ inputs.scrape }}
         continue-on-error: true
         run: |
           for q in "notes?content.venueid=NeurIPS.cc/2025/Conference&limit=1" \
@@ -42,6 +48,7 @@ jobs:
             echo
           done
       - name: Scrape OpenReview
+        if: ${{ inputs.scrape }}
         env:
           # Optional repository secrets; only needed if anonymous access is refused.
           OPENREVIEW_USERNAME: ${{ secrets.OPENREVIEW_USERNAME }}

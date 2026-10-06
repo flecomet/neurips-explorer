@@ -53,12 +53,27 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 2. Settings, Pages, Source: **GitHub Actions**.
 3. Actions tab, **Refresh data**, Run workflow. It runs the whole pipeline on a GitHub runner
    (embedding on CPU takes tens of minutes), commits `data/`, and starts the Pages deployment.
-4. If `scrape.py` fails with HTTP 403, the log shows the server's reply, and the **Probe OpenReview**
-   step before it shows whether the 2025 venue is also refused (blocked client or network) or only
-   2026. As a fallback, add repository secrets `OPENREVIEW_USERNAME` and `OPENREVIEW_PASSWORD`
-   (an OpenReview account); the scraper then logs in before querying.
+4. **OpenReview refuses scripts on GitHub's servers.** From the Actions runner, `scrape.py` gets
+   `ChallengeRequiredError` (a human-verification challenge) for every venue, including past years.
+   Scrape from your own computer instead (see "Scrape locally" below), commit
+   `data/neurips_2026_papers.json`, and run **Refresh data** with the **scrape** box unticked. The
+   workflow then only embeds and lays out, which needs no OpenReview access.
 5. If `scrape.py` reports 0 papers for a track, look up the venue id on
    `https://openreview.net/group?id=NeurIPS.cc/2026`, fix `VENUES` in `config.py`, and rerun.
+
+## Scrape locally
+
+```shell
+git clone https://github.com/flecomet/neurips-explorer && cd neurips-explorer
+pip install requests
+python scrape.py
+git add data && git commit -m "Add NeurIPS 2026 papers" && git push
+```
+
+If that also reports `ChallengeRequiredError`, use a browser, which passes the check: open
+https://openreview.net, paste [`tools/browser_download.js`](tools/browser_download.js) into the
+developer console, then run `python scrape.py --raw neurips2026_raw.json`. Optionally set
+`OPENREVIEW_USERNAME` and `OPENREVIEW_PASSWORD` to make `scrape.py` log in first.
 
 ## Run locally
 
