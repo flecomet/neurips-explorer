@@ -89,8 +89,7 @@ def get_json(session, url, params):
             if "ChallengeRequired" in resp.text:
                 hint = (
                     "\nOpenReview is asking for a human-verification challenge, which a script "
-                    "cannot pass. Run this from your own machine, or use tools/browser_download.js "
-                    "and `python scrape.py --raw neurips2026_raw.json` (see README)."
+                    "cannot pass. Retry later or from a different network."
                 )
             raise ApiError(
                 f"HTTP {resp.status_code} for {resp.url}\n"
@@ -123,43 +122,28 @@ def fetch_venue(session, venueid, track):
         offset += PAGE_SIZE
 
 
-def parse_raw(items):
-    """Parse the [{track, note}] list written by tools/browser_download.js."""
-    return [parse_note(item["note"], item["track"]) for item in items]
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
         "--venue", action="append", metavar="LABEL=VENUE_ID",
         help="override config.VENUES; repeatable",
     )
-    ap.add_argument(
-        "--raw", metavar="FILE",
-        help="read notes saved by tools/browser_download.js instead of calling the API",
-    )
     args = ap.parse_args()
     venues = dict(v.split("=", 1) for v in args.venue) if args.venue else config.VENUES
 
     papers = {}
-    if args.raw:
-        with open(args.raw) as f:
-            for p in parse_raw(json.load(f)):
-                papers[p["id"]] = p
-        print(f"Read {len(papers)} papers from {args.raw}")
-    else:
-        session = requests.Session()
-        session.headers["User-Agent"] = USER_AGENT
-        user = os.environ.get("OPENREVIEW_USERNAME")
-        password = os.environ.get("OPENREVIEW_PASSWORD")
-        if user and password:
-            login(session, user, password)
-        for track, venueid in venues.items():
-            print(f"Fetching {track} ({venueid})")
-            found = fetch_venue(session, venueid, track)
-            print(f"  -> {len(found)} papers")
-            for p in found:
-                papers[p["id"]] = p
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    user = os.environ.get("OPENREVIEW_USERNAME")
+    password = os.environ.get("OPENREVIEW_PASSWORD")
+    if user and password:
+        login(session, user, password)
+    for track, venueid in venues.items():
+        print(f"Fetching {track} ({venueid})")
+        found = fetch_venue(session, venueid, track)
+        print(f"  -> {len(found)} papers")
+        for p in found:
+            papers[p["id"]] = p
 
     papers = sorted(papers.values(), key=lambda p: p["id"])
     if not papers:

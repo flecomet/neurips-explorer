@@ -104,9 +104,7 @@ are frequent in one topic and rare in the others.
    what the site returned; if scraping fails, that output shows what the parser needs to change.
 4. Other sources: `committed` uses `data/neurips_2026_papers.json` as it is in the repository.
    `openreview` does not work from GitHub runners (human-verification challenge). Once OpenReview
-   publishes the papers, scrape from your own machine with `python scrape.py`, or from a browser:
-   open https://openreview.net, paste [`tools/browser_download.js`](tools/browser_download.js) into
-   the developer console, then run `python scrape.py --raw neurips2026_raw.json`. Commit the data
+   publishes the papers, scrape from your own machine with `python scrape.py`. Commit the data
    and run the workflow with source `committed`. The venue ids are in [`config.py`](config.py).
 
 ## Run locally

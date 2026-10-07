@@ -95,19 +95,12 @@ def test_client_error_reports_status_and_body():
     assert "HTTP 403" in str(err.value) and "forbidden body" in str(err.value)
 
 
-def test_parse_raw_export(notes):
-    items = [{"track": "Main track", "note": n} for n in notes]
-    papers = scrape.parse_raw(items)
-    assert [p["id"] for p in papers] == ["AbC123xyz", "Zzz999"]
-    assert papers[0]["track"] == "Main track"
-
-
-def test_challenge_error_suggests_workaround():
+def test_challenge_error_is_reported():
     class Challenged(FakeSession):
         def get(self, url, params, timeout):
             resp = super().get(url, params, timeout)
             resp.text = '{"name":"ChallengeRequiredError"}'
             return resp
 
-    with pytest.raises(scrape.ApiError, match="browser_download.js"):
+    with pytest.raises(scrape.ApiError, match="human-verification"):
         scrape.fetch_venue(Challenged([], status=403), "X", "t")
