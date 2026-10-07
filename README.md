@@ -4,7 +4,7 @@ A 2D semantic map of the accepted NeurIPS 2026 papers, built from
 [SPECTER2](https://huggingface.co/allenai/specter2) embeddings of titles and abstracts.
 Nearby points are semantically similar papers, so a cluster is a topic.
 
-**Live site (after setup, see below): https://flecomet.github.io/neurips-explorer/**
+**Live site: https://flecomet.github.io/neurips-explorer/**
 
 > Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer), itself a
 > fork of [dataplayer12/cvpr-explorer](https://github.com/dataplayer12/cvpr-explorer). Original
@@ -13,7 +13,8 @@ Nearby points are semantically similar papers, so a cluster is a topic.
 
 ## Status
 
-The code is unit-tested; the paper data has not been generated yet.
+The repository contains paper metadata, embeddings, and a generated map layout for 6,231
+accepted papers. The Pages workflow builds the browser payloads and publishes `site/`.
 
 - **OpenReview** has not released the 2026 papers (the venue group has `public_submissions = false`,
   and every 2026 query returns 0 notes while 2025 returns papers). It also answers scripts running
@@ -60,10 +61,11 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 1. Create the GitHub repository (public: GitHub Pages is free only for public repositories),
    push this code to `main`.
 2. Settings, Pages, Source: **GitHub Actions**.
-3. Actions tab, **Refresh data**, Run workflow with source `neurips.cc`. It runs the whole pipeline
-   on a GitHub runner (embedding on CPU takes tens of minutes), commits `data/`, and starts the
-   Pages deployment. The **Probe neurips.cc** step prints what the site returned; if the scrape
-   step then fails, that output shows what the parser needs to change.
+3. When `data/neurips_2026_layout.json` is present, run **Deploy site to GitHub Pages** in the
+   Actions tab. To generate or refresh the data, run **Refresh data** with source `neurips.cc`.
+   It runs the whole pipeline on a GitHub runner, commits `data/`, and starts the Pages
+   deployment. Embedding on a CPU takes tens of minutes. The **Probe neurips.cc** step prints
+   what the site returned; if scraping fails, that output shows what the parser needs to change.
 4. Other sources: `committed` uses `data/neurips_2026_papers.json` as it is in the repository.
    `openreview` does not work from GitHub runners (human-verification challenge). Once OpenReview
    publishes the papers, scrape from your own machine with `python scrape.py`, or from a browser:
@@ -72,6 +74,19 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
    and run the workflow with source `committed`. The venue ids are in [`config.py`](config.py).
 
 ## Run locally
+
+To view the committed paper data and map layout, build the browser payloads and serve them:
+
+```shell
+python build_site.py
+python -m http.server --directory site 8000
+```
+
+Open http://localhost:8000/. Opening `site/index.html` directly as a local file prevents the
+browser from fetching the paper data. `site/data.json` and `site/details.json` are generated
+files and are rebuilt after cloning or updating the repository.
+
+To regenerate the paper data, embeddings, and layout:
 
 ```shell
 pip install -r requirements-pipeline.txt

@@ -544,9 +544,18 @@ function buildHaystack() {
     : t.toLowerCase());
 }
 
+async function fetchJson(path) {
+  if (location.protocol === "file:") {
+    throw new Error("Serve the site with python -m http.server --directory site 8000, then open http://localhost:8000/. Browsers block loading paper data from a local file.");
+  }
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(path + ": HTTP " + response.status);
+  return response.json();
+}
+
 initTheme();
 storeSaved();
-fetch("data.json").then(r => r.json()).then(async data => {
+fetchJson("data.json").then(async data => {
   D = data;
   const params = new URLSearchParams(location.search);
   const mode = params.get("color");
@@ -572,7 +581,7 @@ fetch("data.json").then(r => r.json()).then(async data => {
   apply();
 
   // Abstracts are large; they load after the map is already interactive.
-  fetch("details.json").then(r => r.json()).then(details => {
+  fetchJson("details.json").then(details => {
     X = details;
     buildHaystack();
     if (query) applySearch(query);
@@ -580,8 +589,7 @@ fetch("data.json").then(r => r.json()).then(async data => {
     else if (panelView === "saved") showSaved();
   }).catch(err => { hits.textContent = "abstracts failed to load: " + err; });
 }).catch(err => {
-  panel.replaceChildren(el("p", { className: "hint" }, "Failed to load data.json: " + err +
-    ". If this is a fresh clone, run the pipeline first (see README)."));
+  panel.replaceChildren(el("p", { className: "hint" }, "Unable to start the explorer: " + err.message));
 });
 </script>
 </body>
