@@ -6,10 +6,12 @@ Nearby points are semantically similar papers, so a cluster is a topic.
 
 **Live site: https://flecomet.github.io/neurips-explorer/**
 
-> Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer), itself a
-> fork of [dataplayer12/cvpr-explorer](https://github.com/dataplayer12/cvpr-explorer). Original
-> idea and design credit to [@dataplayer12](https://github.com/dataplayer12). Same license
-> as upstream, see [LICENSE](LICENSE).
+Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer). See
+[Credits](#credits).
+
+[![NeurIPS 2026 Explorer showing the full map with topic names and the topic list](docs/img/map.png)](https://flecomet.github.io/neurips-explorer/)
+
+![Searching for "diffusion" dims every other paper, then a click opens the abstract](docs/img/demo.gif)
 
 ## Status
 
@@ -43,6 +45,36 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
 - Fast start: the map (`data.json`, a few hundred KB gzipped) loads first, abstracts
   (`details.json`) load afterwards.
 
+## Reading the map
+
+Each point is one paper. Position comes from the title and abstract: papers with similar text
+land close together. Colours mark topics, and topic names are drawn on the map. Papers that fit
+no topic share one neutral colour and are listed as "unclustered".
+
+Clicking a point opens the paper panel, shown here.
+
+<img src="docs/img/panel.png" alt="Paper panel with the title, presentation type, location, authors, action buttons and abstract of a selected paper" width="300">
+
+Distances are approximate. UMAP, the 2D projection method, preserves local neighbourhoods
+better than global distances. Read "these two papers are close" as meaningful, and "this topic
+is twice as far away as that one" as unreliable.
+
+## Largest topics
+
+The pipeline finds 36 topics. A further 2074 of the 6231 papers (33%) belong to none of them.
+Topic names are generated automatically from the paper text.
+
+| Papers | Topic name |
+|-------:|------------|
+| 490 | kv · cache · lora |
+| 355 | video · mllms · vlms |
+| 285 | image generation · video · fid |
+| 261 | vla · robot · scene |
+| 249 | mdps · critic · marl |
+| 247 | protein · molecular · gene |
+| 237 | 3d · scene · camera |
+| 183 | thinking · cot · rlvr |
+
 ## How it works
 
 The pipeline is offline and the site is static (no backend, no API keys at serve time).
@@ -53,6 +85,10 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 | Embed title + abstract with SPECTER2 | `embed.py` | `data/neurips_2026_specter2.npy` (float16) |
 | UMAP to 2D, HDBSCAN clusters, TF-IDF topic names, nearest neighbours | `layout.py` | `data/neurips_2026_layout.json` |
 | Merge into the site payload | `build_site.py` | `site/data.json`, `site/details.json` |
+
+`layout.py` runs UMAP on the cosine-normalised embeddings, then HDBSCAN, a density-based
+clustering method, on the 2D coordinates. Topic names use TF-IDF: terms score high when they
+are frequent in one topic and rare in the others.
 
 `site/index.html` renders the payload client-side with plotly.js.
 
@@ -106,3 +142,10 @@ Tests: `pip install -r requirements-dev.txt && python -m pytest`.
 - Roughly a third of papers can end up "unclustered" at `--min-cluster-size 25`. Lower it for
   more, smaller topics.
 - Saved papers never leave the browser.
+
+## Credits
+
+Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer), itself a fork
+of [dataplayer12/cvpr-explorer](https://github.com/dataplayer12/cvpr-explorer). The original
+idea and design are by [@dataplayer12](https://github.com/dataplayer12). Same licence as
+upstream, see [LICENSE](LICENSE).
