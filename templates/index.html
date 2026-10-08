@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NeurIPS 2026 Explorer</title>
-<meta name="description" content="Interactive 2D semantic map of NeurIPS 2026 papers, built from SPECTER2 embeddings. Search, browse by topic, find similar papers.">
-<meta property="og:title" content="NeurIPS 2026 Explorer">
-<meta property="og:description" content="Interactive 2D semantic map of NeurIPS 2026 papers. Nearby points are similar papers.">
+<title>@@NAME@@ Explorer</title>
+<meta name="description" content="Interactive 2D semantic map of @@NAME@@ papers, built from SPECTER2 embeddings. Search, browse by topic, find similar papers.">
+<meta property="og:title" content="@@NAME@@ Explorer">
+<meta property="og:description" content="Interactive 2D semantic map of @@NAME@@ papers. Nearby points are similar papers.">
 <meta property="og:type" content="website">
 <script src="https://cdn.plot.ly/plotly-gl2d-2.35.2.min.js" charset="utf-8"></script>
 <style>
@@ -95,7 +95,7 @@
 </head>
 <body>
 <header>
-  <h1>NeurIPS 2026 <small>Explorer</small></h1>
+  <h1>@@NAME@@ <small>Explorer</small></h1>
   <input id="search" type="search" placeholder="Search titles, authors, abstracts…  ( / )" autocomplete="off" disabled aria-label="Search papers">
   <span id="hits" aria-live="polite"></span>
   <label class="hint" for="colorby">Color by</label>
@@ -109,7 +109,7 @@
   <button id="btn-saved" title="Saved papers">★ Saved <span id="saved-n">0</span></button>
   <span class="spacer"></span>
   <button id="btn-theme" title="Toggle light/dark theme">Theme</button>
-  <a href="https://github.com/flecomet/neurips-explorer" target="_blank" rel="noopener">GitHub</a>
+  <a href="@@REPO_URL@@" target="_blank" rel="noopener">GitHub</a>
 </header>
 <div id="legend"></div>
 <main>
@@ -118,7 +118,7 @@
 </main>
 <footer>
   Derived from <a href="https://github.com/dataplayer12/cvpr-explorer" target="_blank" rel="noopener">dataplayer12/cvpr-explorer</a>.
-  Paper metadata from <a href="https://neurips.cc/virtual/2026/papers.html" target="_blank" rel="noopener">neurips.cc</a>.
+  Paper metadata from <a href="@@SOURCE_URL@@" target="_blank" rel="noopener">@@SOURCE_NAME@@</a>.
   Nearby points are semantically similar papers.
 </footer>
 
@@ -126,7 +126,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const panel = $("panel"), search = $("search"), hits = $("hits"), plotEl = $("plot");
-const SAVED_KEY = "neurips-explorer:saved:2026";
+const SAVED_KEY = "@@STORAGE_PREFIX@@:saved:@@YEAR@@";
 const MAX_LABELS = 40;
 
 let D = null;            // core payload (data.json): coordinates, titles, clusters, neighbours
@@ -155,7 +155,7 @@ function currentTheme() {
 }
 function initTheme() {
   let t = null;
-  try { t = localStorage.getItem("neurips-explorer:theme"); } catch (e) { /* ignore */ }
+  try { t = localStorage.getItem("@@STORAGE_PREFIX@@:theme"); } catch (e) { /* ignore */ }
   if (!t) t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   document.documentElement.dataset.theme = t;
 }
@@ -165,7 +165,7 @@ function cssVar(name) {
 function toggleTheme() {
   const t = currentTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = t;
-  try { localStorage.setItem("neurips-explorer:theme", t); } catch (e) { /* ignore */ }
+  try { localStorage.setItem("@@STORAGE_PREFIX@@:theme", t); } catch (e) { /* ignore */ }
   if (D) {
     recolor(); relayoutTheme(); updateLabels();
     if (panelView === "home") showHome();
@@ -503,7 +503,7 @@ function downloadCsv(idx) {
   const q = s => '"' + String(s).replace(/"/g, '""') + '"';
   const rows = [["title", "authors", "pdf", "link"].join(",")]
     .concat(idx.map(i => [D.title[i], X.authors[i], X.pdf[i], X.forum[i]].map(q).join(",")));
-  const a = el("a", { href: URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" })), download: "neurips2026-saved.csv" });
+  const a = el("a", { href: URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" })), download: "@@CSV_NAME@@" });
   a.click();
   URL.revokeObjectURL(a.href);
 }

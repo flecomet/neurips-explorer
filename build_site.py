@@ -4,16 +4,21 @@ Merges the papers and layout files into two column-oriented JSON files in site/:
   data.json     what the map needs to draw and navigate (loads first)
   details.json  abstracts, authors, keywords, links (loaded afterwards, used by
                 search and the paper panel)
+and renders templates/index.html into site/index.html with values from config.py.
 Run after the pipeline (scrape.py, embed.py, layout.py).
 """
 import json
 import os
+import re
 import statistics
 
 import config
 
 # Presentation levels in display order; anything else is "other".
 DECISION_ORDER = ["oral", "spotlight", "poster", "other"]
+TEMPLATE_PATH = "templates/index.html"
+# config attributes substituted for @@KEY@@ markers in the page template.
+PLACEHOLDERS = ("NAME", "YEAR", "REPO_URL", "SOURCE_NAME", "SOURCE_URL", "STORAGE_PREFIX", "CSV_NAME")
 
 
 def intern(values):
@@ -21,6 +26,14 @@ def intern(values):
     table = sorted(set(values))
     index = {v: i for i, v in enumerate(table)}
     return table, [index[v] for v in values]
+
+
+def render_index(template):
+    for key in PLACEHOLDERS:
+        template = template.replace(f"@@{key}@@", str(getattr(config, key)))
+    left = sorted(set(re.findall(r"@@\w+@@", template)))
+    assert not left, f"unfilled placeholders in {TEMPLATE_PATH}: {left}"
+    return template
 
 
 def build(papers, layout):
@@ -94,6 +107,12 @@ def main():
         with open(path, "w") as f:
             json.dump(payload, f, separators=(",", ":"), ensure_ascii=False)
         print(f"wrote {path}: {os.path.getsize(path) / 1e6:.1f} MB")
+    with open(TEMPLATE_PATH, encoding="utf-8") as f:
+        page = render_index(f.read())
+    path = os.path.join(config.SITE_DIR, "index.html")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(page)
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":

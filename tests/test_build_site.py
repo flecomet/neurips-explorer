@@ -1,3 +1,5 @@
+import pytest
+
 import build_site
 
 
@@ -53,3 +55,20 @@ def test_mismatched_inputs_fail():
     except AssertionError:
         return
     raise AssertionError("expected a length mismatch to be rejected")
+
+
+def test_render_index_fills_every_placeholder(monkeypatch):
+    for key in build_site.PLACEHOLDERS:
+        monkeypatch.setattr(build_site.config, key, f"<{key}>", raising=False)
+    page = build_site.render_index(" ".join(f"@@{k}@@" for k in build_site.PLACEHOLDERS))
+    assert page == " ".join(f"<{k}>" for k in build_site.PLACEHOLDERS)
+
+
+def test_render_index_rejects_unknown_placeholder():
+    with pytest.raises(AssertionError, match="@@NOPE@@"):
+        build_site.render_index("@@NOPE@@")
+
+
+def test_template_uses_only_known_placeholders():
+    with open(build_site.TEMPLATE_PATH, encoding="utf-8") as f:
+        build_site.render_index(f.read())
