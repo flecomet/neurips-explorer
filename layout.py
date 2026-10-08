@@ -1,7 +1,6 @@
 """2D UMAP layout, HDBSCAN clusters, topic labels and nearest neighbours.
 
-Reads data/neurips_2026_papers.json and data/neurips_2026_specter2.npy, writes
-data/neurips_2026_layout.json:
+Reads config.PAPERS_PATH and config.EMBEDDINGS_PATH, writes config.LAYOUT_PATH:
     {"clusters": {id: name}, "points": [{x, y, cluster}], "neighbors": [[idx, ...]]}
 `points` and `neighbors` follow the order of the papers file. Cluster -1 holds
 papers HDBSCAN left unassigned.

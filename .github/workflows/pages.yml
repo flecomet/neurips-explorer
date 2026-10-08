@@ -26,10 +26,11 @@ jobs:
       - name: Check for pipeline data
         id: check
         run: |
-          if [ -f data/neurips_2026_layout.json ]; then
+          layout=$(python3 -c 'import config; print(config.LAYOUT_PATH)')
+          if [ -f "$layout" ]; then
             echo "has_data=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::No data/neurips_2026_layout.json yet. Run the 'Refresh data' workflow first."
+            echo "::notice::No $layout yet. Run the pipeline or the 'Refresh data' workflow first."
           fi
       - uses: actions/setup-python@v5
         if: steps.check.outputs.has_data == 'true'

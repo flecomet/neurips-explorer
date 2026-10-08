@@ -1,6 +1,6 @@
 """Compute SPECTER2 embeddings for the papers.
 
-Reads data/neurips_2026_papers.json, writes data/neurips_2026_specter2.npy as a
+Reads config.PAPERS_PATH, writes config.EMBEDDINGS_PATH as a
 [n_papers, 768] float16 array (CLS pooled, title + abstract). float16 halves the
 file size; cosine similarity is unaffected at that precision. Runs on CPU in
 roughly 15-30 minutes for ~6000 papers, or in a couple of minutes on a GPU.
