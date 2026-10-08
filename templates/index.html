@@ -418,7 +418,7 @@ function renderPaper() {
   const i = selectedPaper;
   const isSaved = saved.includes(D.id[i]);
   const badges = el("div", { className: "badges" },
-    el("span", { className: "badge" }, D.decisions[D.dec[i]]),
+    D.decisions.length > 1 ? el("span", { className: "badge" }, D.decisions[D.dec[i]]) : null,
     D.tracks.length > 1 ? el("span", { className: "badge" }, D.tracks[D.track[i]]) : null,
     D.sites[D.site[i]] ? el("span", { className: "badge" }, D.sites[D.site[i]]) : null,
     D.areas[D.area[i]] ? el("span", { className: "badge" }, prettyArea(D.areas[D.area[i]])) : null);
