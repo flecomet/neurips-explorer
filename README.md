@@ -90,7 +90,8 @@ The pipeline is offline and the site is static (no backend, no API keys at serve
 clustering method, on the 2D coordinates. Topic names use TF-IDF: terms score high when they
 are frequent in one topic and rare in the others.
 
-`site/index.html` renders the payload client-side with plotly.js.
+`templates/index.html` is the page template. `build_site.py` writes it to `site/index.html`,
+which renders the payload client-side with plotly.js.
 
 ## Setup
 
@@ -140,6 +141,20 @@ Tests: `pip install -r requirements-dev.txt && python -m pytest`.
 - Roughly a third of papers can end up "unclustered" at `--min-cluster-size 25`. Lower it for
   more, smaller topics.
 - Saved papers never leave the browser.
+
+## Shared template
+
+This repository is the template source for the sister explorers, currently
+[cvpr-explorer](https://github.com/flecomet/cvpr-explorer). The files listed in `SHARED` in
+`sync_template.py` read every conference-specific value from `config.py`, and
+`build_site.py` renders `templates/index.html` into `site/index.html`. Edit shared files
+here, then copy them across:
+
+    python sync_template.py ../cvpr-explorer --test    # run its tests with these files
+    python sync_template.py ../cvpr-explorer --check   # list differing files
+    python sync_template.py ../cvpr-explorer           # copy them
+
+The "Sister explorers" workflow runs the `--test` step for each sister on every push.
 
 ## Credits
 
