@@ -1,3 +1,4 @@
+import json
 import pathlib
 
 import scrape_site
@@ -93,3 +94,36 @@ def test_to_paper_matches_build_site_schema():
     assert paper["id"] == "nc1" and paper["decision"] == "poster" and paper["site"] == "Sydney"
     for key in ("title", "authors", "abstract", "pdf_link", "forum_link", "keywords", "tldr", "area", "decision", "track"):
         assert key in paper
+
+
+def test_parse_paper_page_reads_title_authors_kind_and_site():
+    html = (pathlib.Path(__file__).parent / "fixtures" / "site_paper_card.html").read_text()
+    info = scrape_site.parse_paper_page(html)
+    assert info["title"] == "AgentAbstain: Do LLM Agents Know When Not to Act?"
+    assert info["authors"].startswith("Xun Liu, Yi Evie Zhang, Vira Kasprova")
+    assert info["authors"].endswith("Varun Chandrasekaran")
+    assert info["kind"] == "oral" and info["site"] == "Atlanta"
+    assert scrape_site.parse_paper_page("<html><body><p>not a paper</p></body></html>") == {}
+
+
+def test_title_key_ignores_case_and_punctuation():
+    assert scrape_site.title_key("Hello,  World!") == scrape_site.title_key("hello world")
+
+
+def test_id_gaps_fills_holes_inside_runs_only():
+    assert scrape_site.id_gaps(["10", "12", "13", "20000"]) == ["11"]
+    assert scrape_site.id_gaps(["5", "6"]) == []
+
+
+def test_parse_paper_page_rejects_pages_without_presentation_type():
+    html = (pathlib.Path(__file__).parent / "fixtures" / "site_paper_card.html").read_text()
+    talk = html.replace('class="hero-card oral"', 'class="hero-card talk"')
+    assert scrape_site.parse_paper_page(talk) == {}
+
+
+def test_keep_previous_adds_papers_missing_from_new_scrape(tmp_path):
+    path = tmp_path / "papers.json"
+    path.write_text(json.dumps([{"id": "nc1"}, {"id": "nc2"}]))
+    merged = scrape_site.keep_previous([{"id": "nc2"}, {"id": "nc3"}], str(path))
+    assert [p["id"] for p in merged] == ["nc1", "nc2", "nc3"]
+    assert scrape_site.keep_previous([{"id": "nc3"}], str(tmp_path / "none.json")) == [{"id": "nc3"}]

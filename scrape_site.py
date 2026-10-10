@@ -31,6 +31,8 @@ USER_AGENT = "neurips-explorer (+https://github.com/flecomet/neurips-explorer)"
 RANK = {"poster": 0, "spotlight": 1, "oral": 2}
 MAX_MISSING_ABSTRACTS = 0.02
 MIN_ABSTRACT_CHARS = 150
+# Largest id jump still treated as one run of paper ids (ids between runs belong to other events).
+ID_RUN_GAP = 500
 
 ID_KEYS = ["id", "eventmedia_id", "event_id", "uid"]
 TITLE_KEYS = ["name", "title"]
@@ -142,7 +144,7 @@ def parse_events(records, abstracts):
             "site": location(rec),
             "url": event_url(rec, kind),
         }
-        key = re.sub(r"\W+", " ", title).strip().lower()
+        key = title_key(title)
         old = best.get(key)
         if old is None or RANK.get(cand["kind"], -1) > RANK.get(old["kind"], -1):
             for field in ("site", "authors", "abstract"):  # keep what the other event knew
@@ -153,6 +155,9 @@ def parse_events(records, abstracts):
                 old[field] = old[field] or cand[field]
     return list(best.values())
 
+
+# Room names on paper pages that carry no city, mapped as the listing JSON maps them.
+ROOM_SITES = {"Hall 1-4": "Sydney", "Hall C1": "Atlanta", "Paris Poster Hall": "Paris"}
 
 ABSTRACT_SELECTORS = [
     ".abstract-text-inner", "#abstractExample", ".abstract-text", ".abstract-content", ".abstract",
@@ -171,6 +176,60 @@ def extract_abstract(html):
     return ""
 
 
+def parse_paper_page(html):
+    """{title, authors, kind, site} from a paper page's hero card, or {} if the page is not a paper.
+    The listing JSON omits some accepted papers that still have an abstract and a page, so these
+    pages are the only source for them."""
+    card = BeautifulSoup(html, "html.parser").select_one(".hero-card")
+    h1 = card.find("h1") if card else None
+    if h1 is None or not clean(h1.get_text(" ")):
+        return {}
+    names = h1.find_next_sibling()
+    authors = [clean(a) for a in (names.get_text(" ") if names else "").split("⋅") if clean(a)]
+    kind = next((k for k in ("oral", "spotlight", "poster") if k in card.get("class", [])), "")
+    if not kind:  # talks, workshops and other events have no presentation type
+        return {}
+    text = clean(card.get_text(" "))
+    after = re.search(r"presentation:\s*(.*)", text, re.I)
+    return {
+        "title": clean(h1.get_text(" ")),
+        "authors": ", ".join(authors),
+        "kind": kind,
+        "site": (location({"session": after.group(1)[:80]}) if after else "")
+        or next((site for room, site in ROOM_SITES.items() if room in text), ""),
+    }
+
+
+def fetch_unlisted(session, rids, listed_titles, abstracts):
+    """Papers that have an abstract but no listing record, read from their paper pages.
+    A page whose title is already listed is skipped (the same paper under another id)."""
+    def work(rid):
+        try:
+            html = get(session, f"{config.SITE_URL}/virtual/{config.SITE_YEAR}/poster/{rid}")
+        except requests.RequestException:
+            return None
+        info = parse_paper_page(html)
+        if not info or title_key(info["title"]) in listed_titles:
+            return None
+        info.update(id=rid, url=f"{config.SITE_URL}/virtual/{config.SITE_YEAR}/poster/{rid}",
+                    abstract=clean(abstracts.get(rid, "")) or extract_abstract(html))
+        return info
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        return [p for p in pool.map(work, rids) if p]
+
+
+def id_gaps(ids, max_jump=ID_RUN_GAP):
+    """Unused integer ids between consecutive known ids that are at most max_jump apart. Accepted
+    papers come in runs of nearby ids, so a hole inside a run may hold a paper the listings omit."""
+    known = sorted(int(i) for i in ids)
+    return [str(i) for a, b in zip(known, known[1:]) if 1 < b - a <= max_jump for i in range(a + 1, b)]
+
+
+def title_key(title):
+    return re.sub(r"\W+", " ", title).strip().lower()
+
+
 def get(session, url, as_json=False):
     delay = 2.0
     for attempt in range(1, MAX_RETRIES + 1):
@@ -181,7 +240,10 @@ def get(session, url, as_json=False):
             resp.raise_for_status()
             return resp.json() if as_json else resp.text
         except requests.RequestException as exc:
-            if attempt == MAX_RETRIES:
+            # A 4xx other than 429 is a real answer (e.g. no page for this id): do not retry it.
+            status = getattr(exc.response, "status_code", None)
+            is_client_error = status is not None and 400 <= status < 500 and status != 429
+            if attempt == MAX_RETRIES or is_client_error:
                 raise
             print(f"  {url}: {exc}; retry {attempt}/{MAX_RETRIES - 1} in {delay:.0f}s")
             time.sleep(delay)
@@ -239,6 +301,21 @@ def to_paper(p, abstract):
     }
 
 
+def keep_previous(papers, path):
+    """Add papers from the previous file that this scrape did not return, so that ids saved
+    in users' browsers stay on the map when the live site omits a paper."""
+    try:
+        with open(path) as f:
+            previous = json.load(f)
+    except (OSError, ValueError):
+        return papers
+    have = {p["id"] for p in papers}
+    kept = [p for p in previous if p["id"] not in have]
+    if kept:
+        print(f"keeping {len(kept)} papers from the previous file that the site no longer returned")
+    return sorted(papers + kept, key=lambda p: p["id"])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--probe", action="store_true", help="inspect the site and exit")
@@ -265,6 +342,21 @@ def main():
     print(f"{len(papers)} papers;", dict(Counter(p["kind"] for p in papers)),
           "| sites", dict(Counter(p["site"] for p in papers)))
 
+    # Papers missing from the listing JSON: those with an abstract, plus unused ids inside runs of
+    # paper ids (the listing and abstracts files both omit some papers).
+    listed_ids = {p["id"] for p in papers}
+    listed_titles = {title_key(p["title"]) for p in papers}
+    unlisted = sorted(set(rid for rid in abstracts if rid not in listed_ids) | set(id_gaps(listed_ids | set(abstracts))))
+    if unlisted:
+        print(f"checking {len(unlisted)} ids missing from the listing JSON...")
+        found = fetch_unlisted(session, unlisted, listed_titles, abstracts)
+        for p in found:
+            if title_key(p["title"]) not in listed_titles:
+                listed_titles.add(title_key(p["title"]))
+                papers.append(p)
+        print(f"  {len(found)} of them are papers; now {len(papers)} papers;",
+              dict(Counter(p["kind"] for p in papers)))
+
     # Abstracts missing from both JSON files come from the paper page.
     todo = [p for p in papers if not p["abstract"]]
     if todo:
@@ -288,6 +380,7 @@ def main():
 
     out = sorted((to_paper(p, p["abstract"]) for p in papers if p["abstract"]), key=lambda p: p["id"])
     os.makedirs(os.path.dirname(config.PAPERS_PATH), exist_ok=True)
+    out = keep_previous(out, config.PAPERS_PATH)
     with open(config.PAPERS_PATH, "w") as f:
         json.dump(out, f, ensure_ascii=False)
     print(f"Wrote {len(out)} papers to {config.PAPERS_PATH}")
