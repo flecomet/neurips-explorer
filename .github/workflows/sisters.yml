@@ -1,10 +1,16 @@
 name: Sister explorers
 
-# Runs each sister repository's tests with this commit's shared files, so a template
-# change that breaks another explorer fails here before it is synced.
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sister-explorers-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   pytest:
@@ -24,5 +30,55 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
       - run: python sync_template.py "sisters/${{ matrix.repo }}" --test
+
+  sync:
+    needs: pytest
+    if: github.repository == 'flecomet/neurips-explorer' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [flecomet/cvpr-explorer]
+    steps:
+      - name: Require sister write credentials
+        env:
+          SYNC_TOKEN: ${{ secrets.SISTER_SYNC_TOKEN }}
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "::error::Set SISTER_SYNC_TOKEN with Contents and Workflows write access to the sister repository."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: main
+          token: ${{ secrets.SISTER_SYNC_TOKEN }}
+          path: sisters/${{ matrix.repo }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      # Recheck the latest branches because another push may arrive while this job waits.
+      - run: python -m pytest -q
+      - run: python sync_template.py "sisters/${{ matrix.repo }}" --test
+      - name: Copy, commit, and push shared files
+        env:
+          SISTER_REPO: ${{ matrix.repo }}
+        run: |
+          target="sisters/$SISTER_REPO"
+          git -C "$target" config user.name "$(git log -1 --format=%an)"
+          git -C "$target" config user.email "$(git log -1 --format=%ae)"
+          python sync_template.py "$target" --commit
+          git -C "$target" push origin HEAD:main

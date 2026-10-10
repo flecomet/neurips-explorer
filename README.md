@@ -36,7 +36,8 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
 - Color by topic, location (Sydney / Atlanta / Paris), presentation type (oral / spotlight / poster, also encoded by marker size)
   or OpenReview primary area. Palette for presentation type is colorblind-safe.
 - Topics list: click a topic to zoom to it and list its papers.
-- Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, the rest dim.
+- Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, grow larger,
+  and receive contrasting outlines while the rest dim. Topic colors remain visible in both themes.
 - Author search: choose Authors to preview papers by partial name, then select suggestions to build a manual group.
   Rounded author buttons in paper details select one author. Results count shared papers once, show topic counts,
   and offer Fit matching papers without changing the viewport automatically.
@@ -161,8 +162,21 @@ here, then copy them across:
     python sync_template.py ../cvpr-explorer --test    # run its tests with these files
     python sync_template.py ../cvpr-explorer --check   # list differing files
     python sync_template.py ../cvpr-explorer           # copy them
+    python sync_template.py ../cvpr-explorer --commit  # copy and commit in a clean checkout
 
-The "Sister explorers" workflow runs the `--test` step for each sister on every push.
+The "Sister explorers" workflow tests both repositories on pushes and pull requests.
+After successful checks on `main`, it copies the shared files to the sister repository,
+commits changes, and pushes its `main` branch. Manual workflow runs on `main` also sync.
+Conference data, configuration, and README files remain specific to each repository.
+The commit uses the source commit's author identity, and creates no commit when files match.
+
+Automatic synchronization requires a repository Actions secret named `SISTER_SYNC_TOKEN`
+in this repository. Use a fine-grained GitHub personal access token restricted to
+`flecomet/cvpr-explorer`, with Contents and Workflows read and write permissions.
+Workflows permission is required because the shared files include workflow definitions.
+The token also lets the sister push trigger its tests and Pages deployment.
+Without this secret, the sync job fails with a setup message; compatibility tests still run.
+Sister branch protection must permit the token owner to push to `main`.
 
 ## Credits
 

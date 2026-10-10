@@ -232,6 +232,7 @@ function computeStyle(mode) {
 function recolor() {
   computeStyle($("colorby").value);
   Plotly.restyle(plotEl, { "marker.color": [colors], "marker.size": [sizes] }, [0]);
+  refreshHighlight();
 }
 
 // ---------- plot ----------
@@ -325,7 +326,13 @@ function refreshHighlight() {
   if (matchSet && activeCluster !== null) idx = [...matchSet].filter(i => D.c[i] === activeCluster);
   else if (matchSet) idx = [...matchSet];
   else if (activeCluster !== null) idx = clusterMembers(activeCluster);
-  Plotly.restyle(plotEl, { selectedpoints: [idx] }, [0]);
+  const highlighted = new Set(idx || []);
+  Plotly.restyle(plotEl, {
+    selectedpoints: [idx],
+    "marker.size": [sizes.map((size, i) => highlighted.has(i) ? Math.max(11, size * 1.7) : size)],
+    "marker.line.width": [sizes.map((_, i) => highlighted.has(i) ? 2 : 0)],
+    "marker.line.color": cssVar("--text"),
+  }, [0]);
 }
 function clusterMembers(cid) {
   const out = [];
