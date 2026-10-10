@@ -37,10 +37,14 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
   or OpenReview primary area. Palette for presentation type is colorblind-safe.
 - Topics list: click a topic to zoom to it and list its papers.
 - Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, the rest dim.
+- Author search: choose Authors to preview papers by partial name, then select suggestions to build a manual group.
+  Rounded author buttons in paper details select one author. Results count shared papers once, show topic counts,
+  and offer Fit matching papers without changing the viewport automatically.
 - Paper panel: abstract, TL;DR, keywords (click to search), PDF and OpenReview links, and the six
   most similar papers.
 - Save papers to a list kept in the browser (localStorage), export as CSV or Markdown.
-- Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?color=<mode>`.
+- Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?color=<mode>`,
+  and `?scope=authors&author=<name>&author=<another name>`. Author selections persist when opening or saving papers.
 - Light and dark themes, keyboard shortcuts (`/` search, `Esc` clear), usable on a phone.
 - Fast start: the map (`data.json`, a few hundred KB gzipped) loads first, abstracts
   (`details.json`) load afterwards.
@@ -54,6 +58,10 @@ no topic share one neutral colour and are listed as "unclustered".
 Clicking a point opens the paper panel, shown here.
 
 <img src="docs/img/panel.png" alt="Paper panel with the title, presentation type, location, authors, action buttons and abstract of a selected paper" width="300">
+
+Author groups are assembled manually. The data has no affiliations or author identifiers. Identical full names
+combine papers across people, while spelling variants remain separate. Matching ignores case, Unicode representation,
+and extra whitespace, but preserves accents and punctuation.
 
 Distances are approximate. UMAP, the 2D projection method, preserves local neighbourhoods
 better than global distances. Read "these two papers are close" as meaningful, and "this topic
