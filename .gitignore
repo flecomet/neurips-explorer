@@ -5,3 +5,4 @@ artifacts/
 site/data.json
 site/details.json
 site/index.html
+.DS_Store
