@@ -151,6 +151,46 @@ selectAuthor('name:wei wang'); assert.deepEqual([...matchSet],[3]);
 ''')
 
 
+AFFILIATION_DETAILS = r'''
+X={...details,
+ authors:['Caroline Wang','Grace Hopper','A. Third','Other'],
+ author_details:[
+  [{id:'neurips:161749',name:'Caroline Wang',institution:'UT Austin | Google DeepMind'}],
+  [{id:'neurips:100',name:'Grace Hopper',institution:'US Navy'}],
+  [],
+  []
+ ]};
+D={...fixture,title:['ROTATE','Other Paper','Third','Mention']};
+buildHaystack(); buildAuthorIndex();
+'''
+
+
+def test_search_matches_full_author_info(tmp_path):
+    run_author_js(tmp_path, AFFILIATION_DETAILS + r'''
+setQuery('deepmind');
+assert.deepEqual([...matchSet],[0]);
+setQuery('navy');
+assert.deepEqual([...matchSet],[1]);
+setQuery('161749');
+assert.deepEqual([...matchSet],[0]);
+setQuery('third');
+assert.deepEqual([...matchSet],[2]);
+''')
+
+
+def test_author_search_matches_full_author_info(tmp_path):
+    run_author_js(tmp_path, AFFILIATION_DETAILS + r'''
+setSearchScope('authors'); applySearch('deepmind');
+assert.deepEqual([...matchSet],[0]);
+assert.match(text(panel),/Caroline Wang/);
+assert.match(text(panel),/Google DeepMind/);
+applySearch('161749');
+assert.deepEqual([...matchSet],[0]);
+assert.match(text(panel),/Caroline Wang/);
+selectAuthor('neurips:161749'); assert.deepEqual([...matchSet],[0]);
+''')
+
+
 def test_paper_author_button_selects_its_identity(tmp_path):
     run_author_js(tmp_path, HOMONYM_DETAILS + r'''
 selectPaper(1);

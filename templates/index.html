@@ -101,9 +101,9 @@
 <body>
 <header>
   <h1>@@NAME@@ <small>Explorer</small></h1>
-  <input id="search" type="search" placeholder="Search titles, authors, abstracts…  ( / )" autocomplete="off" disabled aria-label="Search papers">
+  <input id="search" type="search" placeholder="Search titles, authors, affiliations, abstracts…  ( / )" autocomplete="off" disabled aria-label="Search papers">
   <label class="hint" for="search-scope">Search in</label>
-  <select id="search-scope"><option value="all">All fields</option><option value="authors">Authors</option></select>
+  <select id="search-scope"><option value="all">All fields</option><option value="authors">Authors &amp; affiliations</option></select>
   <span id="hits" aria-live="polite"></span>
   <button id="btn-topics" title="Browse topics">Topics</button>
   <button id="btn-saved" title="Saved papers">★ Saved <span id="saved-n">0</span></button>
@@ -362,8 +362,9 @@ function applySearch(q) {
       matchSet = null;
       hits.textContent = detailsError ? "Author metadata unavailable" : "Loading authors…";
     } else {
+      const draft = normalizeAuthor(query);
       const names = selectedAuthors.length ? selectedAuthors : [...authorIndex.entries()]
-        .filter(([, entry]) => normalizeAuthor(entry.name).includes(normalizeAuthor(query))).map(([key]) => key);
+        .filter(([, entry]) => authorEntryMatches(entry, draft)).map(([key]) => key);
       matchSet = selectedAuthors.length || query ? authorMatches(names) : null;
       hits.textContent = matchSet === null ? "" : matchSet.size + " matching paper" + (matchSet.size === 1 ? "" : "s");
     }
@@ -429,11 +430,23 @@ function buildAuthorIndex() {
   authorIndex = new Map();
   X.authors.forEach((_, i) => paperAuthors(i).forEach(author => {
     const key = authorKey(author);
-    if (!authorIndex.has(key)) authorIndex.set(key, { name: author.name, institutions: new Set(), papers: new Set() });
+    if (!authorIndex.has(key)) authorIndex.set(key, { name: author.name, authorId: author.id || "", institutions: new Set(), papers: new Set() });
     const entry = authorIndex.get(key);
     if (author.institution) entry.institutions.add(author.institution);
     entry.papers.add(i);
   }));
+}
+// Every searchable field shown for an author: name, affiliations, NeurIPS id.
+function authorSearchText(author) {
+  return [author.name, author.institution, author.id ? author.id.replace(/^neurips:/, "") : ""]
+    .filter(Boolean).join(" ").toLowerCase();
+}
+// An author matches the query on any of their fields, not just their name.
+function authorEntryMatches(entry, query) {
+  if (!query) return true;
+  const id = entry.authorId ? entry.authorId.replace(/^neurips:/, "").toLowerCase() : "";
+  return normalizeAuthor(entry.name).includes(query) || (!!id && id.includes(query)) ||
+    [...entry.institutions].some(value => normalizeAuthor(value).includes(query));
 }
 function authorMatches(names) {
   const result = new Set();
@@ -527,7 +540,7 @@ function showAuthorResults() {
   const draft = normalizeAuthor(query);
   const selectedKeys = new Set(selectedAuthors);
   const suggestions = [...authorIndex.entries()]
-    .filter(([key, entry]) => !selectedKeys.has(key) && normalizeAuthor(entry.name).includes(draft))
+    .filter(([key, entry]) => !selectedKeys.has(key) && authorEntryMatches(entry, draft))
     .sort(([, a], [, b]) => b.papers.size - a.papers.size || a.name.localeCompare(b.name));
   const choices = el("ul", { className: "list author-suggestions" });
   suggestions.slice(0, 20).forEach(([key, entry]) => {
@@ -771,9 +784,12 @@ function wire() {
 }
 
 function buildHaystack() {
-  haystack = D.title.map((t, i) => X
-    ? (t + " " + X.authors[i] + " " + X.kw[i].join(" ") + " " + X.tldr[i] + " " + X.abstract[i]).toLowerCase()
-    : t.toLowerCase());
+  haystack = D.title.map((t, i) => {
+    if (!X) return t.toLowerCase();
+    const authors = paperAuthors(i).map(authorSearchText).join(" ");
+    return (t + " " + X.authors[i] + " " + authors + " "
+      + X.kw[i].join(" ") + " " + X.tldr[i] + " " + X.abstract[i]).toLowerCase();
+  });
 }
 
 function restoreUrl(params) {
