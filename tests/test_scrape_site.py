@@ -121,9 +121,44 @@ def test_parse_paper_page_rejects_pages_without_presentation_type():
     assert scrape_site.parse_paper_page(talk) == {}
 
 
-def test_keep_previous_adds_papers_missing_from_new_scrape(tmp_path):
+def test_keep_previous_merges_old_identifiers_without_duplicate_titles(tmp_path):
     path = tmp_path / "papers.json"
-    path.write_text(json.dumps([{"id": "nc1"}, {"id": "nc2"}]))
-    merged = scrape_site.keep_previous([{"id": "nc2"}, {"id": "nc3"}], str(path))
-    assert [p["id"] for p in merged] == ["nc1", "nc2", "nc3"]
-    assert scrape_site.keep_previous([{"id": "nc3"}], str(tmp_path / "none.json")) == [{"id": "nc3"}]
+    path.write_text(json.dumps([
+        {"id": "nc1", "title": "Paper One!", "aliases": ["nc0"]},
+        {"id": "nc2", "title": "paper one"},
+    ]))
+    merged = scrape_site.keep_previous([{"id": "nc3", "title": "Paper One"}], str(path))
+    assert merged == [{"id": "nc3", "title": "Paper One", "aliases": ["nc0", "nc1", "nc2"]}]
+
+
+def test_keep_previous_drops_unverified_missing_titles(tmp_path):
+    path = tmp_path / "papers.json"
+    path.write_text(json.dumps([{"id": "nc1", "title": "Old paper"}]))
+    assert scrape_site.keep_previous([{"id": "nc2", "title": "New paper"}], str(path)) == [
+        {"id": "nc2", "title": "New paper"},
+    ]
+
+
+def test_keep_previous_verifies_missing_pages_and_rejects_changed_titles(tmp_path, monkeypatch):
+    path = tmp_path / "papers.json"
+    path.write_text(json.dumps([
+        {"id": "nc1", "title": "Still available", "abstract": "outdated"},
+        {"id": "nc2", "title": "Unavailable"},
+        {"id": "nc3", "title": "Reused identifier"},
+    ]))
+
+    def page(session, url):
+        rid = url.rsplit("/", 1)[-1]
+        if rid == "2":
+            raise scrape_site.requests.HTTPError("404 Not Found")
+        title = "Still available" if rid == "1" else "A different paper"
+        return (f'<div class="hero-card poster"><h1>{title}</h1><div>Alice ⋅ Bob</div>'
+                f'<div>Hall C1</div></div><div class="abstract-text-inner">{ABS}</div>')
+
+    monkeypatch.setattr(scrape_site, "get", page)
+    merged = scrape_site.keep_previous([], str(path), session=object())
+    assert len(merged) == 1
+    assert merged[0]["id"] == "nc1" and merged[0]["title"] == "Still available"
+    assert merged[0]["abstract"] == ABS.strip()
+    assert merged[0]["authors"] == "Alice, Bob"
+    assert merged[0]["site"] == "Atlanta"

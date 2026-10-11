@@ -15,8 +15,15 @@ Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer)
 
 ## Status
 
-The repository contains paper metadata, embeddings, and a generated map layout for 6,231
-accepted papers. The Pages workflow builds the browser payloads and publishes `site/`.
+The repository contains paper metadata, embeddings, and a generated map layout for 9,110
+distinct paper titles supported by the virtual site. This is source coverage, not an independently
+verified acceptance total. The Pages workflow builds the browser payloads and publishes `site/`.
+
+The 11 October data refresh removed 56 duplicate records from a 9,167-record scrape and excluded
+one previous record whose paper page returned HTTP 404. It retains 126 alternative identifiers
+so saved papers and shared paper links resolve to the corresponding current paper. Text vectors
+were reused for 8,693 identical model inputs from the completed refresh and recomputed for 417
+papers. Input hashes and the excluded record are in [the refresh provenance](docs/data-refresh-2026-10-11.json).
 
 - **OpenReview** has not released the 2026 papers (the venue group has `public_submissions = false`,
   and every 2026 query returns 0 notes while 2025 returns papers). It also answers scripts running
@@ -29,6 +36,9 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
   site. The layout of the two JSON files was not known when the parser was written, so field names
   are looked up from lists of likely candidates, and every run prints the structure it found.
   `python scrape_site.py --probe` prints that structure without writing anything.
+  Papers absent from the listing are recovered from their pages. Previous identifiers become
+  aliases for matching titles; a previous-only title is retained only after its page and abstract
+  are verified. The site build rejects duplicate titles and conflicting aliases.
 
 ## Features
 
@@ -70,19 +80,19 @@ is twice as far away as that one" as unreliable.
 
 ## Largest topics
 
-The pipeline finds 36 topics. A further 2074 of the 6231 papers (33%) belong to none of them.
+The pipeline finds 59 topics. A further 3,758 of the 9,110 papers (41%) belong to none of them.
 Topic names are generated automatically from the paper text.
 
 | Papers | Topic name |
 |-------:|------------|
-| 490 | kv · cache · lora |
-| 355 | video · mllms · vlms |
-| 285 | image generation · video · fid |
-| 261 | vla · robot · scene |
-| 249 | mdps · critic · marl |
-| 247 | protein · molecular · gene |
-| 237 | 3d · scene · camera |
-| 183 | thinking · cot · rlvr |
+| 386 | mdps · critic · multi agent |
+| 354 | protein · molecular · gene |
+| 243 | 3d · scene · camera |
+| 238 | muon · relu · recurrent |
+| 200 | thinking · cot · thought |
+| 191 | gnns · graph neural · subgraph |
+| 185 | image generation · pixel · dit |
+| 168 | debate · social · moral |
 
 ## How it works
 
@@ -119,6 +129,11 @@ which renders the payload client-side with plotly.js.
 
 ## Run locally
 
+When paper metadata, text vectors, and layout are already regenerated together, merging them
+to `main` starts the Pages deployment. No new scrape or Refresh data run is required. For the
+11 October cleaned dataset, use the integration pull request instead of the earlier data-only
+refresh pull request, which still contains duplicate records.
+
 To view the committed paper data and map layout, build the browser payloads and serve them:
 
 ```shell
@@ -147,7 +162,7 @@ Tests: `pip install -r requirements-dev.txt && python -m pytest`.
 
 - `layout.py` is deterministic for fixed inputs (UMAP `random_state=42`) so reruns keep the map
   stable. Changing the embeddings or paper set changes the map.
-- Roughly a third of papers can end up "unclustered" at `--min-cluster-size 25`. Lower it for
+- Papers can end up "unclustered" at `--min-cluster-size 25`. Lower it for
   more, smaller topics.
 - Saved papers never leave the browser.
 

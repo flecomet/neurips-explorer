@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 .pytest_cache/
+artifacts/
 site/data.json
 site/details.json
 site/index.html
