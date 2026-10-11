@@ -35,6 +35,83 @@ def test_author_names_accepts_dicts_strings_and_text():
     assert scrape_site.author_names(None) == ""
 
 
+def test_enrich_author_identities_preserves_existing_paper_content():
+    papers = [
+        {'id': 'nc1', 'title': 'Paper One', 'authors': "A O'Neil, B", 'abstract': 'unchanged'},
+        {'id': 'nc2', 'title': 'Paper Two', 'authors': 'A', 'abstract': 'also unchanged'},
+    ]
+    records = [rec(authors=[
+        {'id': 101, 'fullname': 'A O&amp;#x27;Neil', 'institution': 'University A'},
+        {'id': 202, 'fullname': 'B', 'institution': 'University B'},
+    ])]
+    enriched = scrape_site.enrich_authors(papers, records)
+    assert enriched[0]['author_details'] == [
+        {'id': 'neurips:101', 'name': "A O'Neil", 'institution': 'University A'},
+        {'id': 'neurips:202', 'name': 'B', 'institution': 'University B'},
+    ]
+    assert [{k: v for k, v in p.items() if k != 'author_details'} for p in enriched] == papers
+    assert enriched[1] == papers[1]
+
+
+def test_enrichment_rejects_changed_author_lists_and_conflicting_identities():
+    paper = {'id': 'nc1', 'title': 'Paper One', 'authors': 'A, B'}
+    a = {'id': 101, 'fullname': 'A', 'institution': 'University A'}
+    b = {'id': 202, 'fullname': 'B', 'institution': 'University B'}
+    assert scrape_site.enrich_authors([paper], [rec(authors=[b, a])]) == [paper]
+    conflicting = [rec(authors=[a, b]), rec(id=2, authors=[{**a, 'id': 303}, b])]
+    assert scrape_site.enrich_authors([paper], conflicting) == [paper]
+
+
+def test_future_scrapes_retain_author_identity_through_event_merge():
+    records = [rec(authors=[{'id': 101, 'fullname': 'A B', 'institution': 'University A'}]),
+               rec(id=2, eventtype='Oral', authors='')]
+    event = scrape_site.parse_events(records, {})[0]
+    paper = scrape_site.to_paper(event, ABS)
+    assert paper['author_details'] == [
+        {'id': 'neurips:101', 'name': 'A B', 'institution': 'University A'},
+    ]
+
+
+def test_enrichment_cli_uses_snapshot_without_fetching_pages(tmp_path, monkeypatch):
+    import sys
+
+    papers = [{'id': 'nc1', 'title': 'Paper One', 'authors': 'A', 'abstract': ABS}]
+    path = tmp_path / 'papers.json'
+    path.write_text(json.dumps(papers))
+    snapshot = tmp_path / 'source.json'
+    snapshot.write_text(json.dumps({'results': [rec(authors=[{'id': 101, 'fullname': 'A'}])]}))
+    monkeypatch.setattr(scrape_site.config, 'PAPERS_PATH', str(path))
+    monkeypatch.setattr(sys, 'argv', ['scrape_site.py', '--enrich-authors', str(snapshot)])
+
+    def no_network():
+        raise AssertionError('offline enrichment must not create a network session')
+
+    monkeypatch.setattr(scrape_site.requests, 'Session', no_network)
+    scrape_site.main()
+    enriched = json.loads(path.read_text())
+    assert enriched[0]['author_details'][0]['id'] == 'neurips:101'
+    assert {k: v for k, v in enriched[0].items() if k != 'author_details'} == papers[0]
+
+
+def test_verified_previous_page_preserves_identity_only_when_authors_agree(tmp_path, monkeypatch):
+    path = tmp_path / 'papers.json'
+    details = [{'id': 'neurips:101', 'name': 'Alice', 'institution': 'University A'}]
+    path.write_text(json.dumps([
+        {'id': 'nc1', 'title': 'Same authors', 'authors': 'Alice', 'author_details': details},
+        {'id': 'nc2', 'title': 'Changed authors', 'authors': 'Alice', 'author_details': details},
+    ]))
+
+    def page(session, url):
+        title, name = ('Same authors', 'Alice') if url.endswith('/1') else ('Changed authors', 'Bob')
+        return (f'<div class="hero-card poster"><h1>{title}</h1><div>{name}</div></div>'
+                f'<div class="abstract-text-inner">{ABS}</div>')
+
+    monkeypatch.setattr(scrape_site, 'get', page)
+    merged = scrape_site.keep_previous([], str(path), session=object())
+    assert merged[0]['author_details'] == details
+    assert 'author_details' not in merged[1]
+
+
 def test_presentation_from_type_and_decision():
     assert scrape_site.presentation(rec(eventtype="Oral")) == "oral"
     assert scrape_site.presentation(rec(eventtype="Poster", decision="Accept (spotlight)")) == "spotlight"

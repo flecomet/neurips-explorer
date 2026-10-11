@@ -10,12 +10,14 @@ looked up from lists of likely candidates and the structure is printed on every 
     python scrape_site.py --probe   # print the structure of the JSON files and one paper page
 """
 import argparse
+import html
 import json
 import os
 import re
 import sys
 import time
-from collections import Counter
+import unicodedata
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin
 
@@ -99,6 +101,46 @@ def author_names(value):
     return ", ".join(names)
 
 
+def identity_text(value):
+    text = html.unescape(html.unescape(str(value or "")))
+    return unicodedata.normalize("NFC", clean(text))
+
+
+def author_details(value):
+    if not isinstance(value, list):
+        return []
+    out = []
+    for author in value:
+        if not isinstance(author, dict):
+            return []
+        name = identity_text(first(author, ["fullname", "full_name", "name", "author"]))
+        if not name:
+            continue
+        rid = author.get("id")
+        aid = f"neurips:{int(rid)}" if not isinstance(rid, bool) and str(rid).isdigit() and int(rid) > 0 else None
+        out.append({"id": aid, "name": name, "institution": identity_text(author.get("institution"))})
+    return out if any(a["id"] for a in out) else []
+
+
+def enrich_authors(papers, records):
+    """Attach identities only when the title and complete ordered author list agree."""
+    by_title = defaultdict(list)
+    for record in records:
+        details = author_details(first(record, AUTHOR_KEYS))
+        if details:
+            by_title[identity_text(first(record, TITLE_KEYS)).lower()].append(details)
+    out = []
+    for paper in papers:
+        enriched = dict(paper)
+        candidates = by_title.get(identity_text(paper["title"]).lower(), [])
+        signatures = {tuple((a["id"], a["name"].lower()) for a in authors) for authors in candidates}
+        names = [identity_text(n).lower() for n in paper["authors"].split(",") if n.strip()]
+        if len(signatures) == 1 and names == [a["name"].lower() for a in candidates[0]]:
+            enriched["author_details"] = candidates[0]
+        out.append(enriched)
+    return out
+
+
 def presentation(rec):
     """'oral' | 'spotlight' | 'poster' | 'other' from the event type and decision text."""
     text = f"{first(rec, TYPE_KEYS)} {first(rec, DECISION_KEYS)}".lower()
@@ -144,15 +186,22 @@ def parse_events(records, abstracts):
             "site": location(rec),
             "url": event_url(rec, kind),
         }
+        details = author_details(first(rec, AUTHOR_KEYS))
+        if details:
+            cand["author_details"] = details
         key = title_key(title)
         old = best.get(key)
         if old is None or RANK.get(cand["kind"], -1) > RANK.get(old["kind"], -1):
             for field in ("site", "authors", "abstract"):  # keep what the other event knew
                 cand[field] = cand[field] or (old or {}).get(field, "")
+            if old and not cand.get("author_details") and cand["authors"] == old["authors"] and old.get("author_details"):
+                cand["author_details"] = old["author_details"]
             best[key] = cand
         else:
             for field in ("site", "authors", "abstract"):
                 old[field] = old[field] or cand[field]
+            if not old.get("author_details") and old["authors"] == cand["authors"] and details:
+                old["author_details"] = details
     return list(best.values())
 
 
@@ -285,7 +334,7 @@ def probe(session):
 
 
 def to_paper(p, abstract):
-    return {
+    paper = {
         "id": f"nc{p['id']}",
         "title": p["title"],
         "authors": p["authors"],
@@ -299,6 +348,9 @@ def to_paper(p, abstract):
         "track": "",
         "site": p["site"],
     }
+    if p.get("author_details"):
+        paper["author_details"] = p["author_details"]
+    return paper
 
 
 def keep_previous(papers, path, session=None):
@@ -319,6 +371,9 @@ def keep_previous(papers, path, session=None):
         aliases.discard(target["id"])
         if aliases:
             target["aliases"] = sorted(aliases)
+        if (old.get("author_details") and not target.get("author_details")
+                and identity_text(target.get("authors")).lower() == identity_text(old.get("authors")).lower()):
+            target["author_details"] = old["author_details"]
 
     for old in previous:
         target = by_title.get(title_key(old["title"]))
@@ -358,7 +413,19 @@ def keep_previous(papers, path, session=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--probe", action="store_true", help="inspect the site and exit")
+    ap.add_argument("--enrich-authors", metavar="SNAPSHOT", help="add author identities from a local listing JSON without fetching pages")
     args = ap.parse_args()
+
+    if args.enrich_authors:
+        with open(config.PAPERS_PATH) as f:
+            papers = json.load(f)
+        with open(args.enrich_authors) as f:
+            records = find_records(json.load(f))
+        enriched = enrich_authors(papers, records)
+        with open(config.PAPERS_PATH, "w") as f:
+            json.dump(enriched, f, ensure_ascii=False)
+        print(f"author identities available for {sum(bool(p.get('author_details')) for p in enriched)}/{len(enriched)} papers")
+        return
 
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
