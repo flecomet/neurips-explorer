@@ -49,13 +49,16 @@ papers. Input hashes and the excluded record are in [the refresh provenance](doc
 - Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, grow larger,
   and receive contrasting outlines while the rest dim. Topic colors remain visible in both themes.
 - Author search: choose Authors to preview papers by partial name, then select suggestions to build a manual group.
-  Rounded author buttons in paper details select one author. Results count shared papers once, show topic counts,
+  Suggestions distinguish NeurIPS accounts using their institution and account identifier.
+  Rounded author buttons in paper details select that account when an identifier is available. Results count shared papers once, show topic counts,
   and offer Fit matching papers without changing the viewport automatically.
 - Paper panel: abstract, TL;DR, keywords (click to search), PDF and OpenReview links, and the six
   most similar papers.
 - Save papers to a list kept in the browser (localStorage), export as CSV or Markdown.
 - Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?location=Atlanta&location=Paris&presentation=oral`,
-  and `?scope=authors&author=<name>&author=<another name>`. Author selections persist when opening or saving papers.
+  and `?scope=authors&author-id=neurips:149508`. Name-only selections use `author-id=name:<normalized name>`.
+  Legacy `author=<name>` links select every account and unverified name group with that full name.
+  Author selections persist when opening or saving papers.
 - Light and dark themes, keyboard shortcuts (`/` search, `Esc` clear), usable on a phone.
 - Fast start: the map (`data.json`, a few hundred KB gzipped) loads first, abstracts
   (`details.json`) load afterwards.
@@ -70,9 +73,18 @@ Clicking a point opens the paper panel, shown here.
 
 <img src="docs/img/panel.png" alt="Paper panel with the title, presentation type, location, authors, action buttons and abstract of a selected paper" width="300">
 
-Author groups are assembled manually. The data has no affiliations or author identifiers. Identical full names
-combine papers across people, while spelling variants remain separate. Matching ignores case, Unicode representation,
-and extra whitespace, but preserves accents and punctuation.
+Author groups are assembled manually. For 5,815 of the 9,110 papers, author identities and institutions come from
+the public NeurIPS listing. Publications are grouped by NeurIPS account identifier, so accounts sharing a name stay
+separate. Selecting an account excludes papers whose authors have no identifier. An account identifier identifies
+a NeurIPS account; one person may have several accounts.
+
+The remaining 3,295 papers use name-only groups marked "identity not verified". Identical full names can combine
+papers across people within these groups, while spelling variants remain separate. Name matching ignores case,
+Unicode representation, and extra whitespace, but preserves accents and punctuation.
+
+The author enrichment matched both the title and the complete ordered author list before attaching identifiers.
+One further title matched the source, but its local author list contains a repeated name and was left unverified.
+The [enrichment provenance](docs/author-identities-2026-10-11.json) records coverage and preservation checks.
 
 Distances are approximate. UMAP, the 2D projection method, preserves local neighbourhoods
 better than global distances. Read "these two papers are close" as meaningful, and "this topic
@@ -144,6 +156,15 @@ python -m http.server --directory site 8000
 Open http://localhost:8000/. Opening `site/index.html` directly as a local file prevents the
 browser from fetching the paper data. `site/data.json` and `site/details.json` are generated
 files and are rebuilt after cloning or updating the repository.
+
+To add author identifiers to existing paper metadata, download the public NeurIPS listing JSON and use it as a
+local snapshot. This updates author metadata while preserving paper order, titles, abstracts, embeddings, and map
+layout. Rebuild the site afterwards; the embedding and layout stages do not need to run.
+
+```shell
+python scrape_site.py --enrich-authors /path/to/neurips-2026-orals-posters.json
+python build_site.py
+```
 
 To regenerate the paper data, embeddings, and layout:
 

@@ -1,0 +1,27 @@
+{
+  "source_url": "https://neurips.cc/static/virtual/data/neurips-2026-orals-posters.json",
+  "source_snapshot_downloaded_at_utc": "2026-10-11T19:33:39.133809+00:00",
+  "source_snapshot_sha256": "4b9a95966858535e9789a14e968ab6acffff785e8c7ec88e083f368c50711aed",
+  "source_event_records": 9242,
+  "matching_policy": "Exact title and complete ordered author names after Unicode NFC, whitespace, case, and HTML entity normalization; all source records for a title must agree on author IDs and names.",
+  "identity_scope": "NeurIPS account ID, not independently verified global person identity. Separate accounts are not automatically merged.",
+  "papers": 9110,
+  "papers_with_author_identities": 5815,
+  "papers_without_author_identities": 3295,
+  "identified_author_occurrences": 31200,
+  "distinct_account_ids": 24837,
+  "identified_occurrences_without_institution": 609,
+  "matched_title_with_author_list_disagreement": [
+    "nc150133"
+  ],
+  "preservation_checks": {
+    "paper_order_and_all_previous_fields_unchanged": true,
+    "browser_core_map_payload_unchanged": true,
+    "unchanged_artifact_sha256": {
+      "data/neurips_2026_specter2.npy": "e236fe3281f6050e9c6c34cef5e30e96aa78478f86f8fd72f1c245317ce7f3d2",
+      "data/neurips_2026_layout.json": "f72dc46ebad9d1190646befb9fd3007b7f9fb5b511a3b00ffb3d0d1c794c8221"
+    }
+  },
+  "papers_before_enrichment_sha256": "6c8fb311ea33f0dc1ae280acc27b3850c95a7cb9cefe02713deff59949db3da3",
+  "papers_after_enrichment_sha256": "4625390d96a61f0946955e8fd06e6e618c9370a1d4728ee0e59645c0270d290b"
+}
