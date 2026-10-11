@@ -1,0 +1,35 @@
+{
+  "source_pull_request": 9,
+  "source_commit": "3ab1bd8b1d25806cbfdd8a4e33fcefb368dad4ad",
+  "source_papers": 9157,
+  "target_papers": 9110,
+  "reused_identical_tokenized_inputs": 8693,
+  "recomputed_papers": 417,
+  "recomputed_device": "mps",
+  "base_model": "allenai/specter2_base",
+  "adapter": "allenai/specter2",
+  "maximum_tokens": 512,
+  "candidate_papers_sha256": "27838737a890b6a20701fc5bcffe3cf22e4f16bae5e218fe0828303d4a9429bd",
+  "embeddings_sha256": "e236fe3281f6050e9c6c34cef5e30e96aa78478f86f8fd72f1c245317ce7f3d2",
+  "papers_sha256": "6c8fb311ea33f0dc1ae280acc27b3850c95a7cb9cefe02713deff59949db3da3",
+  "unique_titles": 9110,
+  "identifier_aliases": 126,
+  "raw_snapshot_records": 9167,
+  "duplicate_preserved_records_removed": 56,
+  "unavailable_previous_records_excluded": [
+    {
+      "id": "nc152291",
+      "title": "Bridging the Gap Between Latent and Explicit Reasoning with Looped Transformers",
+      "authors": "Ying Fan, Anej Svete",
+      "abstract": "Language models typically reason via explicit chain-of-thought (CoT), generating intermediate steps token-by-token. *Latent reasoning* offers an alternative by performing multi-step inference in the model's hidden states, replacing decoded tokens with continuous representations. However, existing latent-reasoning methods often underperform explicit CoT, especially at scales beyond 1B parameters. We close this gap with **LOTUS** (**Lo**oped **T**ransformers with s**u**pervision on latent**s**), a framework that: *(i)* processes a padded latent prefix with a looped Transformer, computing all $K$ latent blocks in parallel; and *(ii)* applies *parallel supervision on latent thoughts*: all $K$ latent blocks are supervised simultaneously after the loop, each aligned to its corresponding CoT step. On Llama-3.2-3B-Instruct, LOTUS is, to our knowledge, the first latent-reasoning method to bridge the gap to explicit CoT on math reasoning, while reducing thought-phase latency by $2.5\\times$. Ablations identify three ingredients necessary for this success: parallel supervision routed directly through the base model's LM head against the CoT tokens, sufficient parallel width per latent block, and sufficient sequential loop depth.",
+      "pdf_link": "",
+      "forum_link": "https://neurips.cc/virtual/2026/poster/152291",
+      "keywords": [],
+      "tldr": "",
+      "area": "",
+      "decision": "poster",
+      "track": "",
+      "site": "Sydney"
+    }
+  ]
+}

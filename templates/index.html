@@ -161,6 +161,13 @@ function storeSaved() {
   try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch (e) { /* ignore */ }
   $("saved-n").textContent = saved.length;
 }
+function canonicalPaperId(id) {
+  return D.aliases?.[id] || id;
+}
+function migrateSavedIds() {
+  saved = [...new Set(saved.map(canonicalPaperId))];
+  storeSaved();
+}
 
 // ---------- theme ----------
 function currentTheme() {
@@ -759,7 +766,7 @@ function restoreUrl(params) {
     setSearchScope("authors");
   } else setQuery(params.get("q") || "");
   const p = params.get("p"), c = params.get("c");
-  const pi = p ? D.id.indexOf(p) : -1;
+  const pi = p ? D.id.indexOf(canonicalPaperId(p)) : -1;
   if (pi >= 0) { selectPaper(pi); if (searchScope !== "authors") panTo(pi); }
   else if (searchScope !== "authors" && c !== null && D.clusters[c]) selectCluster(+c);
   restoringUrl = false;
@@ -795,6 +802,7 @@ initTheme();
 storeSaved();
 fetchJson("data.json").then(async data => {
   D = data;
+  migrateSavedIds();
   const params = new URLSearchParams(location.search);
   computeStyle();
   renderFilters();

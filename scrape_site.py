@@ -301,19 +301,58 @@ def to_paper(p, abstract):
     }
 
 
-def keep_previous(papers, path):
-    """Add papers from the previous file that this scrape did not return, so that ids saved
-    in users' browsers stay on the map when the live site omits a paper."""
+def keep_previous(papers, path, session=None):
+    """Keep old identifiers as aliases and recover missing titles only from verified pages."""
     try:
         with open(path) as f:
             previous = json.load(f)
     except (OSError, ValueError):
         return papers
-    have = {p["id"] for p in papers}
-    kept = [p for p in previous if p["id"] not in have]
-    if kept:
-        print(f"keeping {len(kept)} papers from the previous file that the site no longer returned")
-    return sorted(papers + kept, key=lambda p: p["id"])
+    out = list(papers)
+    by_title = {title_key(p["title"]): p for p in out}
+    have = {p["id"] for p in out}
+    missing = []
+    merged = 0
+
+    def merge_aliases(target, old):
+        aliases = set(target.get("aliases", [])) | set(old.get("aliases", [])) | {old["id"]}
+        aliases.discard(target["id"])
+        if aliases:
+            target["aliases"] = sorted(aliases)
+
+    for old in previous:
+        target = by_title.get(title_key(old["title"]))
+        if target is not None:
+            merge_aliases(target, old)
+            merged += 1
+        elif old["id"] not in have:
+            missing.append(old)
+
+    kept = 0
+    if session is not None and missing:
+        candidates = {p["id"][2:]: p for p in missing
+                      if p["id"].startswith("nc") and p["id"][2:].isdigit()}
+        print(f"verifying {len(candidates)} previous paper pages missing from this scrape...")
+        found = fetch_unlisted(session, sorted(candidates), set(by_title), {})
+        for info in found:
+            old = candidates[info["id"]]
+            key = title_key(info["title"])
+            if key != title_key(old["title"]) or not info["abstract"]:
+                continue
+            target = by_title.get(key)
+            if target is not None:
+                merge_aliases(target, old)
+                merged += 1
+                continue
+            target = to_paper(info, info["abstract"])
+            merge_aliases(target, old)
+            by_title[key] = target
+            out.append(target)
+            kept += 1
+
+    print(f"matched {merged} previous records to current titles; verified {kept} additional papers; "
+          f"excluded {len(previous) - merged - kept} unverified previous records")
+    return sorted(out, key=lambda p: p["id"])
 
 
 def main():
@@ -350,11 +389,12 @@ def main():
     if unlisted:
         print(f"checking {len(unlisted)} ids missing from the listing JSON...")
         found = fetch_unlisted(session, unlisted, listed_titles, abstracts)
+        before = len(papers)
         for p in found:
             if title_key(p["title"]) not in listed_titles:
                 listed_titles.add(title_key(p["title"]))
                 papers.append(p)
-        print(f"  {len(found)} of them are papers; now {len(papers)} papers;",
+        print(f"  {len(found)} paper pages; added {len(papers) - before} unique titles; now {len(papers)} papers;",
               dict(Counter(p["kind"] for p in papers)))
 
     # Abstracts missing from both JSON files come from the paper page.
@@ -380,7 +420,7 @@ def main():
 
     out = sorted((to_paper(p, p["abstract"]) for p in papers if p["abstract"]), key=lambda p: p["id"])
     os.makedirs(os.path.dirname(config.PAPERS_PATH), exist_ok=True)
-    out = keep_previous(out, config.PAPERS_PATH)
+    out = keep_previous(out, config.PAPERS_PATH, session=session)
     with open(config.PAPERS_PATH, "w") as f:
         json.dump(out, f, ensure_ascii=False)
     print(f"Wrote {len(out)} papers to {config.PAPERS_PATH}")
