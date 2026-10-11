@@ -33,8 +33,8 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
 ## Features
 
 - Map of all papers with topic names drawn on it; more names appear as you zoom in.
-- Color by topic, location (Sydney / Atlanta / Paris), presentation type (oral / spotlight / poster, also encoded by marker size)
-  or OpenReview primary area. Palette for presentation type is colorblind-safe.
+- Filter papers by location and presentation type. Choose one or more options in each filter
+  to refine your search or selected topic.
 - Topics list: click a topic to zoom to it and list its papers.
 - Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, grow larger,
   and receive contrasting outlines while the rest dim. Topic colors remain visible in both themes.
@@ -44,7 +44,7 @@ accepted papers. The Pages workflow builds the browser payloads and publishes `s
 - Paper panel: abstract, TL;DR, keywords (click to search), PDF and OpenReview links, and the six
   most similar papers.
 - Save papers to a list kept in the browser (localStorage), export as CSV or Markdown.
-- Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?color=<mode>`,
+- Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?location=Atlanta&location=Paris&presentation=oral`,
   and `?scope=authors&author=<name>&author=<another name>`. Author selections persist when opening or saving papers.
 - Light and dark themes, keyboard shortcuts (`/` search, `Esc` clear), usable on a phone.
 - Fast start: the map (`data.json`, a few hundred KB gzipped) loads first, abstracts
