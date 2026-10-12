@@ -43,8 +43,15 @@ papers. Input hashes and the excluded record are in [the refresh provenance](doc
 ## Features
 
 - Map of all papers with topic names drawn on it; more names appear as you zoom in.
-- Filter papers by location and presentation type. Choose one or more options in each filter
+- Filter papers by location, presentation type, and track. Choose one or more options in each filter
   to refine your search or selected topic.
+  Track choices are Main, E&D (Evaluations & Datasets), Position, Journal, and Unknown.
+  Unknown retains papers without a verified track assignment.
+  Main has five submission contribution types: General, Theory, Use-Inspired,
+  Concept & Feasibility, and Negative Results, as described in the
+  [2026 Main Track Handbook](https://neurips.cc/Conferences/2026/MainTrackHandbook#contribution-type).
+  These are separate from submission tracks and presentation types. The public listing does
+  not provide each paper's contribution type, so filtering by these types is not yet available.
 - Topics list: click a topic to zoom to it and list its papers.
 - Search over titles, authors, keywords, TL;DR and abstracts. Matches stay in place, grow larger,
   and receive contrasting outlines while the rest dim. Topic colors remain visible in both themes.
@@ -56,6 +63,7 @@ papers. Input hashes and the excluded record are in [the refresh provenance](doc
   most similar papers.
 - Save papers to a list kept in the browser (localStorage), export as CSV or Markdown.
 - Shareable URLs: `?p=<paper id>`, `?q=<search>`, `?c=<topic>`, `?location=Atlanta&location=Paris&presentation=oral`,
+  `?track=Position&location=Paris`,
   and `?scope=authors&author-id=neurips:149508`. Name-only selections use `author-id=name:<normalized name>`.
   Legacy `author=<name>` links select every account and unverified name group with that full name.
   Author selections persist when opening or saving papers.
@@ -85,6 +93,12 @@ Unicode representation, and extra whitespace, but preserves accents and punctuat
 The author enrichment matched both the title and the complete ordered author list before attaching identifiers.
 One further title matched the source, but its local author list contains a repeated name and was left unverified.
 The [enrichment provenance](docs/author-identities-2026-10-11.json) records coverage and preservation checks.
+
+Track labels come from the listing's `sourceurl`, which identifies the OpenReview submission venue or a journal
+track spreadsheet. The 12 October enrichment combined three downloaded listings from 11 and 12 October,
+matching the title plus either an event identifier or the complete author list. Conflicting assignments remain
+Unknown. Of the 9,110 papers, 7,803 are Main, 967 E&D, 136 Position, 85 Journal, and 119 Unknown.
+The [track enrichment provenance](docs/track-enrichment-2026-10-12.json) records source hashes and preservation checks.
 
 Distances are approximate. UMAP, the 2D projection method, preserves local neighbourhoods
 better than global distances. Read "these two papers are close" as meaningful, and "this topic
@@ -163,6 +177,15 @@ layout. Rebuild the site afterwards; the embedding and layout stages do not need
 
 ```shell
 python scrape_site.py --enrich-authors /path/to/neurips-2026-orals-posters.json
+python build_site.py
+```
+
+Track enrichment also works from downloaded listing JSON files. Multiple snapshots improve coverage when the
+live listing omits previously published papers. Only track metadata changes; paper order and map layout remain
+unchanged. A repeated `--enrich-tracks` combines snapshots before checking for conflicting assignments.
+
+```shell
+python scrape_site.py --enrich-tracks /path/to/listing.json --enrich-tracks /path/to/earlier-listing.json
 python build_site.py
 ```
 
