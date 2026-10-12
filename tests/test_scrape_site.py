@@ -1,6 +1,8 @@
 import json
 import pathlib
 
+import pytest
+
 import scrape_site
 
 ABS = "A long enough abstract. " * 10
@@ -33,6 +35,102 @@ def test_author_names_accepts_dicts_strings_and_text():
     assert scrape_site.author_names([{"fullname": "A B"}, {"name": "C D"}, "E F"]) == "A B, C D, E F"
     assert scrape_site.author_names("A B, C D") == "A B, C D"
     assert scrape_site.author_names(None) == ""
+
+
+@pytest.mark.parametrize(('source', 'expected'), [
+    ('https://openreview.net/group?id=NeurIPS.cc/2026/Conference', 'Main'),
+    ('https://openreview.net/group?id=NeurIPS.cc%2F2026%2FEvaluations_and_Datasets_Track', 'E&D'),
+    ('https://openreview.net/group?id=NeurIPS.cc/2026/Position_Paper_Track', 'Position'),
+    ('journal-track/NeurIPS_2026-Posters_TMLR.xlsx', 'Journal'),
+    ('journal-track/NeurIPS_2026-Posters_JMLR.xlsx', 'Journal'),
+    ('journal-track/NeurIPS_2026-Posters_AoS.xlsx', 'Journal'),
+    ('https://example.org/group?id=NeurIPS.cc/2026/Conference', ''),
+    ('https://openreview.net/group?id=NeurIPS.cc/2025/Conference', ''),
+    (None, ''),
+])
+def test_listing_track_reaches_paper_metadata(source, expected):
+    event = scrape_site.parse_events([rec(sourceurl=source)], {})[0]
+    assert scrape_site.to_paper(event, ABS)['track'] == expected
+
+
+def test_duplicate_events_keep_track_from_either_presentation():
+    poster = rec(sourceurl='https://openreview.net/group?id=NeurIPS.cc/2026/Conference')
+    oral = rec(id=2, eventtype='Oral')
+    for records in ([poster, oral], [oral, poster]):
+        event = scrape_site.parse_events(records, {})[0]
+        assert scrape_site.to_paper(event, ABS)['track'] == 'Main'
+
+
+def test_refresh_keeps_verified_track_when_listing_omits_it(tmp_path):
+    path = tmp_path / 'papers.json'
+    path.write_text(json.dumps([
+        {'id': 'nc1', 'title': 'Paper One', 'authors': 'A', 'track': 'E&D'},
+    ]))
+    merged = scrape_site.keep_previous([
+        {'id': 'nc2', 'title': 'Paper One', 'authors': 'A', 'track': ''},
+    ], str(path))
+    assert merged[0]['track'] == 'E&D'
+
+    merged = scrape_site.keep_previous([
+        {'id': 'nc2', 'title': 'Paper One', 'authors': 'A', 'track': 'Main'},
+    ], str(path))
+    assert merged[0]['track'] == 'Main'
+
+
+def test_track_enrichment_preserves_content_and_rejects_ambiguous_matches():
+    papers = [
+        {'id': 'nc1', 'title': 'Paper One', 'authors': 'A', 'track': '', 'abstract': ABS},
+        {'id': 'nc2', 'title': 'Paper Two', 'authors': 'B', 'track': ''},
+        {'id': 'nc3', 'title': 'Paper Three', 'authors': 'C', 'track': ''},
+        {'id': 'nc4', 'title': 'Paper Four', 'authors': 'D', 'track': ''},
+        {'id': 'nc5', 'title': 'Paper Five', 'authors': 'E', 'track': 'Main'},
+        {'id': 'nc6', 'aliases': ['nc60'], 'title': 'Paper Six', 'authors': 'F', 'track': ''},
+    ]
+    main = 'https://openreview.net/group?id=NeurIPS.cc/2026/Conference'
+    ed = 'https://openreview.net/group?id=NeurIPS.cc/2026/Evaluations_and_Datasets_Track'
+    records = [
+        rec(sourceurl=main, authors='different author transcription'),
+        rec(id=22, name='Paper Two', authors='B', sourceurl=ed),
+        rec(id=33, name='Paper Three', authors='Different person', sourceurl=main),
+        rec(id=4, name='Paper Four', authors='D', sourceurl=main),
+        rec(id=4, name='Paper Four', authors='D', sourceurl=ed),
+        rec(id=6, name='Unrelated title', authors='F', sourceurl=main),
+        rec(id=60, name='Paper Six', authors='Other transcription', sourceurl=ed),
+    ]
+    original = json.loads(json.dumps(papers))
+    enriched = scrape_site.enrich_tracks(papers, records)
+    assert [p['track'] for p in enriched] == ['Main', 'E&D', '', '', 'Main', 'E&D']
+    assert papers == original
+    assert [{k: v for k, v in p.items() if k != 'track'} for p in enriched] == [
+        {k: v for k, v in p.items() if k != 'track'} for p in original
+    ]
+
+
+def test_track_enrichment_cli_combines_snapshots_without_fetching_pages(tmp_path, monkeypatch):
+    import sys
+
+    path = tmp_path / 'papers.json'
+    path.write_text(json.dumps([
+        {'id': 'nc1', 'title': 'Paper One', 'authors': 'A', 'track': ''},
+        {'id': 'nc2', 'title': 'Paper Two', 'authors': 'B', 'track': ''},
+    ]))
+    snapshots = []
+    for i, venue in enumerate(('Conference', 'Position_Paper_Track'), 1):
+        snapshot = tmp_path / f'source{i}.json'
+        snapshot.write_text(json.dumps({'results': [rec(
+            id=i, name=f'Paper {"One" if i == 1 else "Two"}',
+            sourceurl=f'https://openreview.net/group?id=NeurIPS.cc/2026/{venue}',
+        )]}))
+        snapshots.extend(['--enrich-tracks', str(snapshot)])
+    monkeypatch.setattr(scrape_site.config, 'PAPERS_PATH', str(path))
+    monkeypatch.setattr(sys, 'argv', ['scrape_site.py', *snapshots])
+
+    def no_network():
+        raise AssertionError('offline enrichment must not create a network session')
+
+    monkeypatch.setattr(scrape_site.requests, 'Session', no_network)
+    scrape_site.main()
+    assert [p['track'] for p in json.loads(path.read_text())] == ['Main', 'Position']
 
 
 def test_enrich_author_identities_preserves_existing_paper_content():
@@ -126,6 +224,7 @@ def test_parse_events_basics():
         "id": "1", "title": "Paper One", "authors": "A B", "abstract": ABS.strip(),
         "kind": "poster", "site": "Sydney",
         "url": "https://neurips.cc/virtual/2026/poster/1",
+        "track": "",
     }]
 
 
