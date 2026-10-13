@@ -11,7 +11,7 @@ Derived from [flecomet/cvpr-explorer](https://github.com/flecomet/cvpr-explorer)
 
 [![NeurIPS 2026 Explorer showing the full map with topic names and the topic list](docs/img/map.png)](https://flecomet.github.io/neurips-explorer/)
 
-![Searching for "diffusion" dims every other paper, then a click opens the abstract](docs/img/demo.gif)
+![Typing "diffusion" dims nonmatching papers while matching papers remain highlighted](docs/img/demo.gif)
 
 ## Status
 
