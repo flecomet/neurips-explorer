@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Records docs/img/demo.gif from the built site in site/.
+// Records docs/img/demo.gif from the built site in site/ and writes the
+// opening frame to docs/img/map.png, which the README shows above the GIF.
 // Needs Node 22+, ffmpeg, and a Chromium binary (set CHROMIUM to override "chromium").
 // Build the site first with build_site.py so the recording matches templates/index.html.
 
@@ -12,6 +13,7 @@ import { fileURLToPath } from "node:url";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const siteDir = join(repo, "site");
 const output = join(repo, "docs", "img", "demo.gif");
+const stillOutput = join(repo, "docs", "img", "map.png");
 const chromium = process.env.CHROMIUM || "chromium";
 const workdir = await mkdtemp(join(process.env.DEMO_TMP || tmpdir(), "demo-"));
 
@@ -133,9 +135,9 @@ try {
 
   const recordStart = Date.now();
   async function capture() {
-    // JPEG is faster to capture than PNG and is lossless enough once the GIF palette is applied.
-    const { data } = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 90 });
-    const name = `f${String(frames.length).padStart(4, "0")}.jpg`;
+    // PNG keeps every frame in one format, since ffmpeg's concat input decodes all frames as the first frame's format.
+    const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
+    const name = `f${String(frames.length).padStart(4, "0")}.png`;
     await writeFile(join(workdir, name), Buffer.from(data, "base64"));
     frames.push({ name, at: (Date.now() - recordStart) / 1000 });
   }
@@ -146,7 +148,12 @@ try {
     while (Date.now() < end);
   }
 
-  await recordFor(START_MS);
+  // The README still and the GIF's first frame are the same PNG, so the GIF opens on the image above it.
+  const still = Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png" })).data, "base64");
+  await writeFile(stillOutput, still);
+  await writeFile(join(workdir, "f0000.png"), still);
+  frames.push({ name: "f0000.png", at: 0 });
+  await sleep(START_MS);
   await evaluate("document.getElementById('search').focus()");
   for (const character of QUERY) {
     await cdp.send("Input.insertText", { text: character });
