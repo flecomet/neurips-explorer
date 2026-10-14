@@ -20,8 +20,8 @@ jobs:
       matrix:
         repo: [flecomet/cvpr-explorer]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: ${{ matrix.repo }}
           path: sisters/${{ matrix.repo }}
@@ -54,10 +54,10 @@ jobs:
             echo "::error::Set SISTER_SYNC_TOKEN with Contents and Workflows write access to the sister repository."
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ matrix.repo }}
           ref: main
